@@ -161,6 +161,20 @@ class BackendReviewTests(TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertContains(response, "heading order", status_code=422)
 
+    def test_unsourced_target_company_news_blocks_cover_letter(self):
+        cover = pdf(["Dear Hiring Manager", "Example Labs launched a satellite platform in 2024.",
+                     "I would love to work on data quality at Example Labs."])
+        fields = self.post_data()
+        fields["cover_pdf"] = SimpleUploadedFile("cover.pdf", cover, content_type="application/pdf")
+        response = self.client.post(reverse("application_review"), fields)
+        self.assertEqual(response.status_code, 422)
+        self.assertContains(response, "Unsourced employer-specific statement", status_code=422)
+
+    def test_multipart_size_gate_rejects_large_final_upload_before_parsing(self):
+        response = self.client.generic("POST", reverse("application_review"),
+                                       CONTENT_LENGTH=str(17 * 1024 * 1024))
+        self.assertEqual(response.status_code, 413)
+
     def test_missing_csrf_and_unauthenticated_access_block(self):
         anonymous = Client()
         self.assertEqual(anonymous.get(reverse("application_review")).status_code, 302)
