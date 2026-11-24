@@ -159,14 +159,23 @@ def parse_document(kind, raw, *, ai=False):
 def read_upload(upload, *, ai=False):
     # Parse off the web process so an expensive or malformed document cannot tie it up indefinitely.
     kind = upload.name.rsplit(".", 1)[-1].lower()
-    try:
-        run = subprocess.run(
-            [sys.executable, "-m", "webapp.importers", kind, *(["--ai"] if ai else [])], input=upload.read(MAX_UPLOAD_BYTES + 1),
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE if ai else subprocess.DEVNULL, cwd=Path(__file__).resolve().parents[1],
-            timeout=45 if ai else 12, check=False,
-        )
-    except subprocess.TimeoutExpired:
-        raise ImportProblem("The document took too long to read. Try a shorter copy.") from None
+    raw = upload.read(MAX_UPLOAD_BYTES + 1)
+    attempts = (True, False) if ai else (False,)
+    for use_ai in attempts:
+        command = [sys.executable, "-m", "webapp.importers", kind]
+        if use_ai:
+            command.append("--ai")
+        try:
+            run = subprocess.run(
+                command, input=raw, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE if use_ai else subprocess.DEVNULL,
+                cwd=Path(__file__).resolve().parents[1], timeout=45 if use_ai else 12, check=False,
+            )
+            break
+        except subprocess.TimeoutExpired:
+            # A slow provider must not prevent review of a locally readable document.
+            if not use_ai:
+                raise ImportProblem("The document took too long to read. Try a shorter copy.") from None
     if ai and run.stderr:
         for line in run.stderr.splitlines():
             if line.startswith(b"JOB_AI_USAGE model_usage "):

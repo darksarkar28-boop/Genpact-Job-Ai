@@ -1,6 +1,8 @@
 """Exercise the same account, import, review and save endpoints as the browser."""
 import io
+import subprocess
 import zipfile
+from unittest.mock import patch
 from xml.sax.saxutils import escape
 
 from django.contrib.auth import get_user_model
@@ -187,6 +189,22 @@ class OnboardingTests(TestCase):
     def test_oversized_upload_is_rejected_before_multipart_processing(self):
         response = self.client.generic("POST", reverse("import"), CONTENT_LENGTH=str(9 * 1024 * 1024))
         self.assertEqual(response.status_code, 413)
+
+    def test_assisted_worker_timeout_falls_back_to_local_review(self):
+        run_worker = subprocess.run
+
+        def stall_assistance(command, **kwargs):
+            if "--ai" in command:
+                raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+            return run_worker(command, **kwargs)
+
+        with patch("webapp.importers.subprocess.run", side_effect=stall_assistance) as worker:
+            review = self.client.post(reverse("import"), {
+                "document": SimpleUploadedFile("resume.docx", docx(RESUME)), "ai_assist": "on",
+            })
+        self.assertEqual([call.kwargs["timeout"] for call in worker.call_args_list], [45, 12])
+        self.assertEqual(form_values(review)["full_name"], "Mira Das")
+        self.assertFalse(Profile.objects.get(user=self.owner).data)
 
     def test_private_operations_require_session_and_csrf(self):
         public = Client()
