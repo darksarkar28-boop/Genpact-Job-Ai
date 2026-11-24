@@ -142,3 +142,8 @@ input[type=file]::file-selector-button { padding: .45rem .65rem; margin-right: .
 .board-import-form label { font-weight: 600; }
 .board-confirm { display: flex; align-items: flex-start; gap: .4rem; font-size: .78rem; line-height: 1.3; font-weight: 400; color: var(--muted); }
 .board-confirm input { flex: 0 0 auto; margin-top: .2rem; }
+
+.mail-resolve-fields { display: grid; gap: .5rem; width: min(100%, 420px); }
+.mail-resolve-fields label:not(.board-confirm) { font-weight: 600; }
+.mail-resolve-fields select { min-width: 0; width: 100%; }
+.mail-resolve-fields .board-confirm { max-width: 430px; }

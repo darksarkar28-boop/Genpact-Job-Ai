@@ -53,6 +53,8 @@ class ApplicationStatusEvent(models.Model):
         "MailSignal", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="status_events",
     )
+    source_message_id = models.CharField(max_length=512, blank=True)
+    source_message_link = models.URLField(max_length=2048, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
 

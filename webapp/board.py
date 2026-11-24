@@ -62,6 +62,7 @@ def _board(request, form=None, status=200):
     )
     return render(request, "webapp/board.html", {
         "applications": applications,
+        "resolution_applications": sorted(applications, key=lambda app: (app.company.casefold(), app.role.casefold(), app.pk)),
         "statuses": ApplicationStatus.choices,
         "form": form if form is not None else ApplicationForm(),
         "tracker_import_form": TrackerImportForm(),

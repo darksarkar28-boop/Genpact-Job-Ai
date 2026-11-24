@@ -52,6 +52,35 @@
         <form method="post" action="{% url 'mailbox_decide' signal.pk %}" class="mail-decisions">
           {% csrf_token %}
           {% if signal.state == 'pending' %}<button class="primary" type="submit" name="action" value="approve">Approve change</button>{% endif %}
+          {% if signal.state == 'needs_review' %}
+            <div class="mail-resolve-fields">
+              <label for="mail-app-{{ signal.pk }}">Application for this email</label>
+              <select id="mail-app-{{ signal.pk }}" name="application_choice">
+                <option value="">Choose application</option>
+                {% for app in resolution_applications %}
+                  <option value="{{ app.pk }}:{{ app.version }}">
+                    {{ app.company }} — {{ app.role }} ({{ app.get_status_display }})
+                  </option>
+                {% endfor %}
+              </select>
+              <label for="mail-stage-{{ signal.pk }}">Intended stage</label>
+              <select id="mail-stage-{{ signal.pk }}" name="status">
+                <option value="">Choose stage</option>
+                {% for value, label in statuses %}
+                  <option value="{{ value }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+              <label class="board-confirm">
+                <input type="checkbox" name="confirm_resolution" value="yes">
+                I reviewed the source email and confirm the selected application and stage.
+              </label>
+              <label class="board-confirm">
+                <input type="checkbox" name="confirm_offer_decision" value="yes">
+                For Hired or Offer declined: I personally accept or decline this offer.
+              </label>
+            </div>
+            <button class="primary" type="submit" name="action" value="resolve">Resolve manually</button>
+          {% endif %}
           <button class="secondary" type="submit" name="action" value="dismiss">Dismiss</button>
         </form>
       {% endif %}
@@ -118,9 +147,12 @@
                 <li><time datetime="{{ event.created_at|date:'c' }}">{{ event.created_at|date:"M j, Y H:i" }} UTC</time>:
                   {% if event.before %}{{ event.before }} → {% endif %}{{ event.get_after_display }}
                   ({{ event.origin }})
-                  {% if event.mail_signal and event.mail_signal.source_link %}
+                  {% if event.source_message_link %}
+                    <a href="{{ event.source_message_link }}" target="_blank" rel="noopener noreferrer">Source email</a>
+                  {% elif event.mail_signal and event.mail_signal.source_link %}
                     <a href="{{ event.mail_signal.source_link }}" target="_blank" rel="noopener noreferrer">Source email</a>
                   {% endif %}
+                  {% if event.source_message_id %}<span class="hint">Email ref: {{ event.source_message_id|truncatechars:32 }}</span>{% endif %}
                 </li>
               {% endfor %}
             </ol>
