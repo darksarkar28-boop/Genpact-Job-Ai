@@ -1,3 +1,5 @@
+from django.conf import settings
+from django.http import JsonResponse
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
@@ -115,3 +117,18 @@ def import_profile(request):
 def edit_profile(request):
     profile = _owned_profile(request)
     return _editor(request, profile, profile.data, submitted=request.POST if request.method == "POST" else None)
+
+
+@login_required
+@never_cache
+@require_GET
+def company_research(request):
+    from tools.shared_research_cache import ResearchCache
+    try:
+        cache = ResearchCache(settings.DATA_DIR / "public_research.sqlite3")
+        result = cache.lookup(request.GET.get("employer_id"))
+    except ValueError:
+        return JsonResponse({"error": "Use a verified registry namespace and employer identifier."}, status=400)
+    if result is None:
+        return JsonResponse({"error": "No fresh public research is available."}, status=404)
+    return JsonResponse(result)
