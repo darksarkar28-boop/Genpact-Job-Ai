@@ -61,7 +61,8 @@ def career_planning(request):
     if request.method == "POST":
         status = 422
         if not profile:
-            form.add_error(None, "Save your master profile first.") if form.is_bound and form.is_valid() else None
+            form.is_valid()
+            form.add_error(None, "Save your master profile first.")
         elif form.is_valid():
             d = form.cleaned_data
             try:

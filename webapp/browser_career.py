@@ -1,5 +1,6 @@
 """Browser acceptance with fake local microphone/camera devices."""
 import os
+import re
 
 from django.contrib.auth import get_user_model
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
@@ -29,7 +30,7 @@ class BrowserCareer(StaticLiveServerTestCase):
                     page.locator(f"[name={field}]").fill(value)
                 page.get_by_role("button", name="Analyze evidence").click()
                 expect(page.get_by_text("Insufficient evidence for a band")).to_be_visible()
-                expect(page.locator("#counter-script")).to_contain_text("600,000.00")
+                expect(page.locator("#counter-script")).to_have_value(re.compile("600,000.00"))
                 page.get_by_role("link", name="Open timed mock interviews").click()
                 expect(page.get_by_role("heading", name="Engineer at Acme")).to_be_visible()
                 page.locator("[name=mode]").select_option("voice")
@@ -53,6 +54,32 @@ class BrowserCareer(StaticLiveServerTestCase):
                 expect(page.get_by_text("No interviews yet.")).to_be_visible()
                 self.assertFalse(MockInterview.objects.filter(user=user).exists())
                 self.assertEqual(CareerContext.objects.get(user=user).data["role"], "Engineer")
+                # Exercise actual browser video capture, discard, and text fallback.
+                page.locator("[name=mode]").select_option("video")
+                page.locator("[name=consent]").check()
+                page.get_by_role("button", name="Start timed interview").click()
+                page.get_by_role("button", name="Start recording", exact=True).click()
+                expect(page.locator("#recording-status")).to_have_text("Recording…")
+                page.wait_for_timeout(1100)
+                page.get_by_role("button", name="Stop recording", exact=True).click()
+                expect(page.locator("#recording-status")).to_have_text("Recording ready; review before submitting.")
+                page.get_by_role("button", name="Discard recording").click()
+                expect(page.locator("#recording-status")).to_have_text("Recording discarded.")
+                page.get_by_role("button", name="Start recording", exact=True).click()
+                expect(page.locator("#recording-status")).to_have_text("Recording…")
+                page.wait_for_timeout(1100)
+                page.get_by_role("button", name="Stop recording", exact=True).click()
+                expect(page.locator("#recording-status")).to_have_text("Recording ready; review before submitting.")
+                page.locator("[name=transcript]").fill("My recorded video answer.")
+                page.get_by_role("button", name="Submit answer / continue").click()
+                attempt = MockInterview.objects.get(user=user)
+                self.assertEqual(attempt.answers.get(question_index=0).media_type, "video/webm")
+                page.locator("[name=transcript]").fill("My text fallback answer.")
+                page.get_by_role("button", name="Submit answer / continue").click()
+                self.assertFalse(attempt.answers.get(question_index=1).recording)
+                page.get_by_role("button", name="Delete entire interview and all recordings").click()
+                expect(page.get_by_text("No interviews yet.")).to_be_visible()
+
             finally:
                 context.close()
                 browser.close()

@@ -35,7 +35,10 @@ def _amount(value):
         raise ValueError("Enter a positive annual base salary.") from exc
     if not amount.is_finite() or not Decimal("0.01") <= amount <= 10**12:
         raise ValueError("Enter a positive annual base salary no greater than 1 trillion.")
-    return amount.quantize(Decimal("0.01"))
+    try:
+        return amount.quantize(Decimal("0.01"))
+    except InvalidOperation as exc:
+        raise ValueError("Invalid annual base salary.") from exc
 
 
 def _rows(rows):

@@ -76,3 +76,22 @@ class InterviewTests(TestCase):
         media = SimpleUploadedFile("test.webm", b"\x1a\x45\xdf\xa3fixture", content_type="audio/webm")
         self.assertEqual(self.answer(attempt, 0, recording=media).status_code, 422)
         self.assertEqual(attempt.answers.count(), 0)
+
+    def test_context_snapshot_and_clear(self):
+        attempt = self.start()
+        CareerContext.objects.filter(user=self.user).update(data={"role": "Changed"})
+        self.client.post(reverse("career-clear"))
+        attempt.refresh_from_db()
+        self.assertEqual(attempt.context["role"], "Engineer")
+        self.assertFalse(CareerContext.objects.filter(user=self.user).exists())
+
+    def test_media_only_has_no_transcript_score_and_video_is_private(self):
+        attempt = self.start("video", True)
+        media = SimpleUploadedFile("test.webm", b"\x1a\x45\xdf\xa3fixture", content_type="video/webm")
+        self.assertEqual(self.answer(attempt, 0, recording=media).status_code, 302)
+        answer = attempt.answers.get()
+        self.assertEqual(answer.media_type, "video/webm")
+        self.assertIsNone(answer.feedback["clarity"])
+        self.assertIsNone(answer.feedback["technical_depth"])
+        self.assertEqual(self.client.get(reverse("interview-download", args=[attempt.pk, 0]))["Content-Type"],
+                         "application/octet-stream")

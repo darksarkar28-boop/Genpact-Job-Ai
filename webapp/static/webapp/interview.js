@@ -13,7 +13,7 @@
   const input = form.querySelector("[name=recording]");
   const submit = document.querySelector("#answer-submit");
   const mode = form.dataset.mode;
-  if (mode === "text") input.hidden = true;
+  if (mode === "text") { input.hidden = true; const label = form.querySelector("label[for=id_recording]"); if (label) label.hidden = true; }
   function release() {
     if (stream) stream.getTracks().forEach(t => t.stop());
     stream = null;
@@ -21,7 +21,7 @@
   function clearPreview() {
     if (previewURL) URL.revokeObjectURL(previewURL);
     previewURL = null;
-    if (preview) { preview.removeAttribute("src"); preview.hidden = true; }
+    if (preview) { preview.pause(); preview.removeAttribute("src"); preview.load(); preview.hidden = true; }
     input.value = "";
   }
   function tick() {

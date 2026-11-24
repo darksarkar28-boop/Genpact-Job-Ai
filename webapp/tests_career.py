@@ -6,7 +6,7 @@ from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 
 from .career_planning import compensation_band, counter_offer, skill_gaps
-from .models import Profile
+from .models import CareerContext, Profile
 
 
 def salary(source, amount, **changes):
@@ -66,6 +66,7 @@ class CareerWebTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Insufficient evidence for a band")
         self.assertContains(response, "Python")
+        self.assertEqual(CareerContext.objects.get(user=user).data["role"], "Engineer")
         self.assertNotContains(response, "<h3>SQL</h3>")
         self.client.force_login(other)
         response = self.client.post(url, data)

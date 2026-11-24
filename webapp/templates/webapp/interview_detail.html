@@ -29,7 +29,7 @@
 <h3>{{ answer.question }}</h3>
 {% if answer.timed_out %}<p>Time expired; answer not saved.</p>{% endif %}
 {% if answer.feedback %}<p>Clarity: {{ answer.feedback.clarity|default_if_none:"Not scored" }} · Technical depth: {{ answer.feedback.technical_depth|default_if_none:"Not scored" }}</p>
-<p>{{ answer.feedback.feedback }}</p><p>Answer excerpt: {{ answer.feedback.excerpt }}</p>{% endif %}
+{% if answer.feedback.missing %}<p>Missing rubric points: {{ answer.feedback.missing|join:", " }}</p>{% endif %}<p>{{ answer.feedback.feedback }}</p><p>Answer excerpt: {{ answer.feedback.excerpt }}</p>{% endif %}
 {% if answer.transcript %}<details><summary>Saved transcript</summary><p class="preserve">{{ answer.transcript }}</p></details>
 <form method="post" action="{% url 'interview-erase' attempt.pk answer.question_index %}">{% csrf_token %}<button name="action" value="transcript" type="submit" class="secondary">Delete transcript and scores</button></form>{% endif %}
 {% if answer.media_type %}<a href="{% url 'interview-download' attempt.pk answer.question_index %}">Download recording</a>

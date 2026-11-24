@@ -8,6 +8,7 @@
 <section class="card stack">
 <h2>Role and source observations</h2>
 <p>Using saved profile revision {{ profile.revision }}. All observations are user-supplied and unverified; enter annual base salaries only. No currency conversion or automatic submission. Role details and your offer are saved privately; raw salary observations and posting lists are not stored.</p>
+<details><summary>Example input format (fictional data)</summary><p>Salary observations:</p><pre class="preserve" style="white-space:pre-wrap">[{"role":"Engineer","location":"Delhi","level":"Junior","currency":"INR","annual_base":500000,"date":"2025-01-01","source":"https://example.com/salary"}]</pre><p>Posting evidence:</p><pre class="preserve" style="white-space:pre-wrap">[{"role":"Engineer","source":"https://example.com/posting","required_skills":["Python","SQL"]}]</pre></details>
 <form method="post">{% csrf_token %}{{ form.as_p }}<button class="primary" type="submit">Analyze evidence</button></form>
 <p><a href="{% url 'interview-home' %}">Open timed mock interviews</a> (uses your saved role and profile).</p>
 <form method="post" action="{% url 'career-clear' %}">{% csrf_token %}<button type="submit" class="secondary">Clear saved career context</button></form>
