@@ -12,7 +12,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from pypdf import PdfReader
 
-from .documents import TEMPLATES, artifact_file
+from .documents import TEMPLATES, artifact_file, review_pdf_file
 from .models import DocumentJob, Profile
 from .test_documents import PROFILE
 
@@ -71,6 +71,14 @@ class DocumentWorkerSmokeTests(TestCase):
 
     def _approve_generated(self, owner, profile, cv_job, cover_job=None):
         response = self._review_generated(owner, profile, cv_job, cover_job)
+        if response.status_code != 200:
+            report = response.context["release_report"]
+            findings = report["errors"] if report else response.context["export_error"]
+            fixtures = {
+                job.document_type: [page.extract_text() for page in PdfReader(review_pdf_file(job)).pages]
+                for job in (cv_job, cover_job) if job
+            }
+            self.fail(f"Expected approval for supported fixtures. Findings: {findings!r}. Rendered fixture text: {fixtures!r}")
         self.assertContains(response, "Posting keyword coverage")
         self.assertContains(response, "1/1 exact")
         cv_job.refresh_from_db()
@@ -81,7 +89,9 @@ class DocumentWorkerSmokeTests(TestCase):
 
     def _assert_exact_final_download(self, job):
         expected = artifact_file(job).read_bytes()
-        response = self.client.get(reverse("document_download", args=[job.pk]))
+        status = self.client.get(reverse("document_status", args=[job.pk])).json()
+        self.assertTrue(status["release_approved"])
+        response = self.client.get(status["download_url"])
         self.assertEqual(response.status_code, 200)
         actual = b"".join(response.streaming_content)
         self.assertEqual(actual, expected)
@@ -193,6 +203,9 @@ class DocumentWorkerSmokeTests(TestCase):
                 cv_pdfs["classic"], cover_pdf, cv_docxs["modern"], cover_docx,
                 edited_cover_pdf, edited_cover_docx,
             ):
+                status = self.client.get(reverse("document_status", args=[approved_job.pk])).json()
+                self.assertFalse(status["release_approved"])
+                self.assertNotIn("download_url", status)
                 blocked = self.client.get(reverse("document_download", args=[approved_job.pk]))
                 self.assertEqual(blocked.status_code, 403)
 

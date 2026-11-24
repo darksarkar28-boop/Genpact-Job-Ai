@@ -15,7 +15,7 @@ python manage.py migrate
 python manage.py run_document_worker
 ```
 
-The Django worker launches one short-lived container per job with `--network=none`, a read-only root filesystem, dropped Linux capabilities, a PID limit, bounded memory/CPU, a 64 MiB temporary filesystem, and a host-side timeout. LuaLaTeX is used for CV PDFs and XeLaTeX for cover-letter PDFs. DOCX exports are generated from the same confirmed content snapshot with Pandoc.
+The Django worker launches one short-lived container per job with `--network=none`, a read-only root filesystem, dropped Linux capabilities, a PID limit, bounded memory/CPU, a 128 MiB temporary filesystem, and a host-side timeout. LuaLaTeX is used for CV PDFs and XeLaTeX for cover-letter PDFs. Python-docx generates editable Word files from the same snapshot. LibreOffice renders their private proof PDFs for review.
 
 Useful environment variables:
 
@@ -26,6 +26,12 @@ Useful environment variables:
 - `JOBWEB_DOCUMENT_WORKER_CPUS` — CPU bound, default `1.0`.
 
 Artifacts are written below `JOBWEB_DATA_DIR/exports`, not the Git checkout. Build directories live below a private staging directory and are deleted after every attempt. The web download endpoint always filters by the signed-in owner.
+
+## Using an approved application file
+
+The document studio offers visibly marked preview pages for both formats. Candidates submit the selected files and posting terms for review in the studio. The results show the coverage denominator, missing terms and any unsupported claims.
+
+An authenticated consumer, including an extension attaching a candidate-selected document, should read `GET /documents/<job_id>/status/` using the candidate's session. Once `release_approved` is true, use the returned `download_url` to obtain the approved PDF or editable DOCX. The server checks the current profile revision and the exact file digest on final download. A locked or changed file returns HTTP 403. Another account's job returns HTTP 404. After an edit, select the newly reviewed file. The `preview_url` always returns a marked review copy.
 
 
 ## Retention and recruiter-review evidence

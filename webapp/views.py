@@ -377,6 +377,7 @@ def approve_document_release(request):
                 "user_id": request.user.pk,
                 "profile_revision": profile.revision,
                 "artifact_sha256": job.artifact_sha256,
+                "verified_sources": report["verified_sources"],
                 "approved_at": approved_at,
                 "application_jobs": application_jobs,
             }
