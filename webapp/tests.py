@@ -195,3 +195,27 @@ class OnboardingTests(TestCase):
         guarded = Client(enforce_csrf_checks=True)
         guarded.force_login(self.owner)
         self.assertEqual(guarded.post(reverse("edit"), {"full_name": "unsaved"}).status_code, 403)
+
+
+class PublicResearchTests(TestCase):
+    def test_shared_read_only_and_expiry(self):
+        import tempfile
+        from pathlib import Path
+        from django.test import override_settings
+        from tools.shared_research_cache import ResearchCache
+
+        with tempfile.TemporaryDirectory() as root, override_settings(DATA_DIR=Path(root)):
+            cache = ResearchCache(Path(root) / "public_research.sqlite3")
+            cache.get_or_refresh("IN-MCA:EXAMPLE", lambda key: [
+                {"url": "https://example.com/company", "summary": "Public company information"},
+            ])
+            endpoint = reverse("company-research")
+            self.assertEqual(self.client.get(endpoint, {"employer_id": "IN-MCA:EXAMPLE"}).status_code, 302)
+            for name in ("research_reader_a", "research_reader_b"):
+                reader = Client()
+                reader.force_login(get_user_model().objects.create_user(name))
+                response = reader.get(endpoint, {"employer_id": "IN-MCA:EXAMPLE"})
+                self.assertEqual(response.status_code, 200)
+                self.assertTrue(response.json()["requires_verification"])
+                self.assertEqual(reader.get(endpoint, {"employer_id": "US:EXAMPLE"}).status_code, 404)
+                self.assertEqual(reader.post(endpoint, {"employer_id": "IN-MCA:EXAMPLE"}).status_code, 405)
