@@ -11,7 +11,7 @@ from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from .documents import artifact_file
+from .documents import TEMPLATES, artifact_file
 from .models import DocumentJob, Profile
 from .test_documents import PROFILE
 
@@ -71,43 +71,52 @@ class DocumentWorkerSmokeTests(TestCase):
             self.assertEqual(package.read("validated_cover_letter.pdf"), cover.read_bytes())
             self.assertTrue(json.loads(package.read("verification_report.json"))["allowed"])
 
-    def test_real_pdf_docx_stock_engines_and_layout_switching(self):
+    def test_every_template_real_pdf_docx_stock_engines_and_layout_switching(self):
         owner = get_user_model().objects.create_user("worker_smoke")
         profile = Profile.objects.create(user=owner, revision=1, data=PROFILE)
         letter = "Dear Hiring Team,\nI build reliable reporting tools."
         with TemporaryDirectory() as temporary, override_settings(DOCUMENT_EXPORT_ROOT=Path(temporary)):
-            cv_pdf = self._process(owner, profile, {
-                "document_type": "cv", "output_format": "pdf", "template_key": "classic",
-            })
+            cv_pdfs = {}
+            cv_docxs = {}
+            for template in TEMPLATES:
+                key = template["key"]
+                cv_pdfs[key] = self._process(owner, profile, {
+                    "document_type": "cv", "output_format": "pdf", "template_key": key,
+                })
+                cv_docxs[key] = self._process(owner, profile, {
+                    "document_type": "cv", "output_format": "docx", "template_key": key,
+                })
+
             cover_pdf = self._process(owner, profile, {
                 "document_type": "cover_letter", "output_format": "pdf", "template_key": "classic",
                 "cover_letter_body": letter, "company": "Example Labs", "role": "Engineer",
-            })
-            modern_docx = self._process(owner, profile, {
-                "document_type": "cv", "output_format": "docx", "template_key": "modern",
-            })
-            compact_docx = self._process(owner, profile, {
-                "document_type": "cv", "output_format": "docx", "template_key": "compact",
             })
             cover_docx = self._process(owner, profile, {
                 "document_type": "cover_letter", "output_format": "docx", "template_key": "clean",
                 "cover_letter_body": letter, "company": "Example Labs", "role": "Engineer",
             })
 
-            self.assertEqual(cv_pdf.verification["pagination_source"], "generated PDF")
+            expected_templates = {template["key"] for template in TEMPLATES}
+            self.assertEqual(set(cv_pdfs), expected_templates)
+            self.assertEqual(set(cv_docxs), expected_templates)
+            for job in cv_pdfs.values():
+                self.assertEqual(job.verification["pagination_source"], "generated PDF")
+            for job in cv_docxs.values():
+                self.assertTrue(job.verification["pagination_source"].startswith("headless LibreOffice"))
             self.assertEqual(cover_pdf.verification["pagination_source"], "generated PDF")
-            self.assertTrue(modern_docx.verification["pagination_source"].startswith("headless LibreOffice"))
             self.assertTrue(cover_docx.verification["pagination_source"].startswith("headless LibreOffice"))
 
-            with zipfile.ZipFile(artifact_file(modern_docx)) as doc:
+            with zipfile.ZipFile(artifact_file(cv_docxs["modern"])) as doc:
                 modern_xml = doc.read("word/document.xml")
-            with zipfile.ZipFile(artifact_file(compact_docx)) as doc:
+            with zipfile.ZipFile(artifact_file(cv_docxs["compact"])) as doc:
                 compact_xml = doc.read("word/document.xml")
             self.assertNotEqual(modern_xml, compact_xml)
             self.assertIn(b"Aptos", modern_xml)
             self.assertIn(b"Calibri", compact_xml)
 
-            self._verify_application_download(owner, profile, artifact_file(cv_pdf), artifact_file(cover_pdf))
+            self._verify_application_download(
+                owner, profile, artifact_file(cv_pdfs["classic"]), artifact_file(cover_pdf)
+            )
 
             staging = Path(temporary) / ".staging"
             self.assertEqual(list(staging.iterdir()), [])
