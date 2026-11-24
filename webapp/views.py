@@ -98,7 +98,7 @@ def import_profile(request):
     upload = ImportForm(request.POST, request.FILES)
     if upload.is_valid():
         try:
-            draft = merge_profiles(profile.data, read_upload(upload.cleaned_data["document"]))
+            draft = merge_profiles(profile.data, read_upload(upload.cleaned_data["document"], ai=upload.cleaned_data["ai_assist"]))
             if any(len(draft[key]) > MAX_ENTRIES for key in ("education", "experience")):
                 raise ImportProblem("This import would exceed 50 entries per section. Choose a shorter version.")
         except ImportProblem as exc:
