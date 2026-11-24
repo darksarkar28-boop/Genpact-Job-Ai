@@ -46,3 +46,58 @@ stuff missing terms or turn a synonym into a false claim. The full issue's
 mandatory pre-export factual-evidence gate remains to be implemented.
 
 Remove the temporary extracted text and terms JSON after the verification step.
+
+
+## Authenticated final PDF pre-export gate
+
+Start the Django web app documented in the root README and sign in with a saved,
+confirmed master profile. From the profile workspace, choose **Review an
+application** (`/applications/review/`).
+
+- Upload the *final compiled* CV PDF and, when applicable, the final cover
+  letter PDF. Each is limited to 8 MiB and must contain extractable text.
+- Specify the target employer and at least two CV headings in the order they
+  appear visually. The server checks the headings' order in PDF extraction.
+  Human visual inspection remains necessary for complex/multi-column layouts.
+- Paste the posting's exact required/preferred terms as the JSON above.
+  Missing terms are shown separately from fabricated claims; they are not
+  by themselves a blocker.
+- For candidate claims beyond the automated high-risk metrics, employment,
+  dates, and degree checks, supply an array of exact
+  `{"claim":"draft text","evidence":"confirmed profile excerpt"}` records.
+  The server requires the evidence excerpt to be present in the signed-in
+  user's saved profile.
+- For any target-company factual statements, supply direct public HTTPS
+  citations with `{"claim":"exact published statement","url":"https://..."}`.
+  The server independently re-fetches each source, blocks redirects and
+  private IP targets, and requires the claim text to match the fetched page.
+  Inaccessible, changed, or unsupported citations block release.
+
+Choose **Check document** to review findings. If it passes, select the
+**same PDFs again** and choose **Recheck and export ZIP**. Approval expires
+after 15 minutes and is bound to the logged-in account, the profile's
+revision, all submitted rule inputs, and the PDF bytes. The server runs the
+checks **again** on the final submitted files; editing anything requires a
+fresh review.
+
+Only this export endpoint supplies the `verified_application.zip` archive
+containing the checked PDFs and a JSON verification receipt. No browser/API
+endpoint bypasses these checks. Upload bytes are not retained between
+requests. Stale profile versions and attempts from other accounts are
+rejected. Client-side review badges are never accepted as authorization.
+
+**Scope and evidence:** This is conservative deterministic verification, not
+an omniscient NLP fact-checker. It detects unsupported high-risk terms,
+invalid claim/source declarations, unreadable PDFs and heading-order
+mismatches. It cannot infer every possible factual statement or guarantee
+visual line order across arbitrary PDF layouts; a human reviewer must still
+check the final rendered pages. Cloud PDF/DOCX compilation and extension
+release are separate workstreams; they must call this backend gate before
+being enabled.
+
+Local focused test commands:
+
+```bash
+python -m unittest discover -s tests -t .
+python manage.py test webapp
+```
