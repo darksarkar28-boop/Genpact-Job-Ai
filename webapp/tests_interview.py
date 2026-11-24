@@ -40,13 +40,20 @@ class InterviewTests(TestCase):
         self.assertContains(self.client.get(reverse("interview-detail", args=[attempt.pk])), "Interview complete")
 
     def test_expired_answer_is_not_saved(self):
-        attempt = self.start()
+        attempt = self.start("voice", True)
         MockInterview.objects.filter(pk=attempt.pk).update(deadline=timezone.now()-timedelta(seconds=1))
-        self.assertEqual(self.answer(attempt, 0, transcript="late").status_code, 302)
+        media = SimpleUploadedFile("late.webm", b"\x1a\x45\xdf\xa3fixture", content_type="audio/webm")
+        self.assertEqual(self.answer(attempt, 0, transcript="late", recording=media).status_code, 302)
         answer = attempt.answers.get()
         self.assertTrue(answer.timed_out)
         self.assertEqual(answer.transcript, "")
-        self.assertIsNone(answer.feedback["clarity"])
+        self.assertEqual(answer.recording, b"")
+        self.assertEqual(answer.media_type, "")
+        self.assertEqual(answer.feedback, {})
+        page = self.client.get(reverse("interview-detail", args=[attempt.pk]))
+        self.assertContains(page, "Time expired; answer not saved.")
+        self.assertNotContains(page, "Clarity:")
+        self.assertNotContains(page, "Missing rubric points:")
 
     def test_recording_consent_privacy_and_deletion(self):
         self.assertEqual(self.client.post(reverse("interview-home"), {"mode": "voice"}).status_code, 422)
@@ -73,6 +80,7 @@ class InterviewTests(TestCase):
 
     def test_text_mode_refuses_media(self):
         attempt = self.start()
+        self.assertNotContains(self.client.get(reverse("interview-detail", args=[attempt.pk])), 'name="recording"')
         media = SimpleUploadedFile("test.webm", b"\x1a\x45\xdf\xa3fixture", content_type="audio/webm")
         self.assertEqual(self.answer(attempt, 0, recording=media).status_code, 422)
         self.assertEqual(attempt.answers.count(), 0)
@@ -95,3 +103,24 @@ class InterviewTests(TestCase):
         self.assertIsNone(answer.feedback["technical_depth"])
         self.assertEqual(self.client.get(reverse("interview-download", args=[attempt.pk, 0]))["Content-Type"],
                          "application/octet-stream")
+
+    def test_mislabeled_audio_webm_is_accepted_but_video_is_not(self):
+        attempt = self.start("voice", True)
+        # Minimal EBML/Segment/Tracks/TrackEntry/TrackType metadata fixtures.
+        def webm(track_type):
+            return bytes.fromhex("1a45dfa380185380678a1654ae6b85ae838381") + bytes([track_type])
+        video = SimpleUploadedFile("video.webm", webm(1), content_type="video/webm")
+        self.assertEqual(self.answer(attempt, 0, recording=video).status_code, 422)
+        audio = SimpleUploadedFile("audio.webm", webm(2), content_type="video/webm")
+        self.assertEqual(self.answer(attempt, 0, recording=audio).status_code, 302)
+        self.assertEqual(attempt.answers.get().media_type, "audio/webm")
+
+    def test_attempt_cap_allows_delete_and_restart(self):
+        from .interview_views import MAX_ATTEMPTS
+        for _ in range(MAX_ATTEMPTS):
+            self.assertEqual(self.client.post(reverse("interview-home"), {"mode": "text"}).status_code, 302)
+        response = self.client.post(reverse("interview-home"), {"mode": "voice", "consent": True})
+        self.assertContains(response, "Delete one before starting another", status_code=422)
+        attempt = MockInterview.objects.filter(user=self.user).first()
+        self.client.post(reverse("interview-delete", args=[attempt.pk]))
+        self.assertEqual(self.client.post(reverse("interview-home"), {"mode": "text"}).status_code, 302)

@@ -24,7 +24,11 @@ MediaRecorder on HTTPS or localhost, with explicit consent and manual review.
 Enter or edit a transcript for heuristic clarity and technical depth feedback.
 No automated speech-to-text, external media processor or claim of expert scoring.
 Recording without a transcript is allowed but not scored. Unsupported browsers
-can use the text fallback. Recording size is limited to 8 MiB per answer. Recordings
+can use the text fallback. Recording size is limited to 8 MiB per answer (24 MiB per attempt), and each
+account can retain at most ten attempts (240 MiB of recording payloads). Delete
+an old attempt before starting another. This is a bounded database-storage
+implementation; high-volume deployments should plan dedicated private object
+storage and quotas before scaling. Recordings
 are stored in the private account database, downloaded as attachments, and may be
 deleted independently of transcripts. Deleting a transcript also deletes its scores.
 Delete an entire interview to remove its context snapshot and all answers; clearing

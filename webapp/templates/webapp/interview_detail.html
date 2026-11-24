@@ -9,7 +9,7 @@
 <p>{{ question.text }}</p>
 <p>Time remaining: <strong id="interview-timer" data-seconds="{{ remaining }}">{{ remaining }}</strong> seconds. When time expires, continue to the next question; late answers are not scored or saved.</p>
 <form id="interview-answer" data-mode="{{ attempt.mode }}" method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.as_p }}
-{% if attempt.recording_consent %}
+{% if allow_recording %}
 <div id="media-controls" hidden>
 <p id="recording-status" role="status">Recording not started.</p>
 <button type="button" id="record-start" class="secondary">Start recording</button>
@@ -28,7 +28,7 @@
 {% for answer in answers %}<article>
 <h3>{{ answer.question }}</h3>
 {% if answer.timed_out %}<p>Time expired; answer not saved.</p>{% endif %}
-{% if answer.feedback %}<p>Clarity: {{ answer.feedback.clarity|default_if_none:"Not scored" }} · Technical depth: {{ answer.feedback.technical_depth|default_if_none:"Not scored" }}</p>
+{% if answer.feedback and not answer.timed_out %}<p>Clarity: {{ answer.feedback.clarity|default_if_none:"Not scored" }} · Technical depth: {{ answer.feedback.technical_depth|default_if_none:"Not scored" }}</p>
 {% if answer.feedback.missing %}<p>Missing rubric points: {{ answer.feedback.missing|join:", " }}</p>{% endif %}<p>{{ answer.feedback.feedback }}</p><p>Answer excerpt: {{ answer.feedback.excerpt }}</p>{% endif %}
 {% if answer.transcript %}<details><summary>Saved transcript</summary><p class="preserve">{{ answer.transcript }}</p></details>
 <form method="post" action="{% url 'interview-erase' attempt.pk answer.question_index %}">{% csrf_token %}<button name="action" value="transcript" type="submit" class="secondary">Delete transcript and scores</button></form>{% endif %}

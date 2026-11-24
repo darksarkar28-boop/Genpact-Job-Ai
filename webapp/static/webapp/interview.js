@@ -13,7 +13,6 @@
   const input = form.querySelector("[name=recording]");
   const submit = document.querySelector("#answer-submit");
   const mode = form.dataset.mode;
-  if (mode === "text") { input.hidden = true; const label = form.querySelector("label[for=id_recording]"); if (label) label.hidden = true; }
   function release() {
     if (stream) stream.getTracks().forEach(t => t.stop());
     stream = null;
@@ -22,7 +21,7 @@
     if (previewURL) URL.revokeObjectURL(previewURL);
     previewURL = null;
     if (preview) { preview.pause(); preview.removeAttribute("src"); preview.load(); preview.hidden = true; }
-    input.value = "";
+    if (input) input.value = "";
   }
   function tick() {
     const seconds = Math.max(0, Math.ceil((end - performance.now()) / 1000));
@@ -43,7 +42,7 @@
     release();
     if (previewURL) URL.revokeObjectURL(previewURL);
   });
-  if (!controls) return;
+  if (!controls || !input) return;
   if (!navigator.mediaDevices || !window.MediaRecorder || !window.DataTransfer) return;
   controls.hidden = false;
   const types = mode === "video" ? ["video/webm;codecs=vp8,opus", "video/webm"] : ["audio/webm;codecs=opus", "audio/webm", "audio/ogg"];
