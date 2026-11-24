@@ -49,3 +49,12 @@ class DocumentJob(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["user", "fingerprint"], name="docjob_user_fingerprint_uniq"),
         ]
+
+
+class TemplateReview(models.Model):
+    template_key = models.CharField(max_length=32, unique=True)
+    reviewer_label = models.CharField(max_length=120)
+    feedback = models.TextField()
+    approved = models.BooleanField(default=False)
+    reviewed_at = models.DateTimeField(default=__import__("django.utils.timezone", fromlist=["now"]).now)
+    updated_at = models.DateTimeField(auto_now=True)
