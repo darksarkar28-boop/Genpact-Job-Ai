@@ -16,6 +16,7 @@ from .documents import (
     claim_next_job,
     process_claimed_job,
     retry_document_job,
+    review_pdf_file,
 )
 from .models import DocumentJob, Profile, TemplateReview
 from .tests import docx, pdf
@@ -206,19 +207,25 @@ class DocumentExportTests(TestCase):
         payload = b"".join(download.streaming_content)
         self.assertTrue(payload.startswith(b"PK"))
 
-    def test_retention_cleanup_removes_artifact_but_keeps_audit_record(self):
-        self.queue()
+    def test_retention_cleanup_removes_artifact_and_private_review_proof_but_keeps_audit_record(self):
+        self.queue(output_format="docx", template_key="modern")
         job = self.finish_next()
         path = Path(self.temp.name) / job.artifact_name
+        proof = review_pdf_file(job)
         self.assertTrue(path.is_file())
+        self.assertIsNotNone(proof)
+        self.assertTrue(proof.is_file())
         old = timezone.now() - timedelta(days=45)
         DocumentJob.objects.filter(pk=job.pk).update(finished_at=old)
 
         call_command("cleanup_document_exports", older_than_days=30)
         job.refresh_from_db()
         self.assertFalse(path.exists())
+        self.assertFalse(proof.exists())
         self.assertEqual(job.artifact_name, "")
         self.assertEqual(job.artifact_sha256, "")
+        self.assertNotIn("review_pdf_name", job.verification)
+        self.assertNotIn("release_approval", job.verification)
         self.assertIn("artifact_cleaned_at", job.verification)
         self.assertEqual(DocumentJob.objects.filter(pk=job.pk).count(), 1)
         self.assertEqual(self.client.get(reverse("document_download", args=[job.pk])).status_code, 404)
