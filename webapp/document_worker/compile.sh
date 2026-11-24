@@ -15,8 +15,15 @@ case "$format" in
     mv document.pdf output.pdf
     ;;
   docx)
-    timeout 45s pandoc --from=markdown --to=docx document.md -o output.docx >/tmp/compile.log 2>&1
+    timeout 30s python3 /worker/render_docx.py document.json output.docx >/tmp/docx.log 2>&1
     test -s output.docx
+    rm -rf /tmp/lo-profile /tmp/lo-out
+    mkdir -p /tmp/lo-out
+    timeout 35s libreoffice --headless --nologo --nodefault --nofirststartwizard \
+      -env:UserInstallation=file:///tmp/lo-profile \
+      --convert-to pdf --outdir /tmp/lo-out output.docx >/tmp/lo.log 2>&1
+    test -s /tmp/lo-out/output.pdf
+    cp /tmp/lo-out/output.pdf output.pdf
     ;;
   *)
     echo "unsupported output format" >&2
