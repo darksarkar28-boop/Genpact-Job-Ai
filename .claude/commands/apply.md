@@ -371,6 +371,30 @@ check and report that clearly. See `tools/README_ATS_COVERAGE.md`.
 
 **4. Clean up:** delete the extracted `.txt` file **and the temporary `-terms.json` file**.
 
+### 5f. Mandatory final export release gate (authenticated web app)
+
+The PDF text-layer and grounding review above must finish **before** releasing
+an application. The generated files are still drafts until the server accepts
+the final binary content. Start the Django web application, sign in to the
+candidate's own profile and visit `/applications/review/` from the workspace.
+
+Upload the **exact final CV PDF and cover PDF**, select the verified employer,
+give the role's Step 1 keyword list, the visual heading order, and any
+company-specific factual claims with independently verifiable public HTTPS
+sources. The server requires confirmed profile evidence, detects unsupported
+numeric claims / dates / degrees / employers, re-extracts both PDF text layers,
+checks headings, verifies company claim sources and reports literal keyword
+coverage. After a passing review, re-upload the *same files* and explicitly
+export. The server re-checks the bytes and current profile revision on this
+second request and issues `verified_application.zip` only if all checks pass.
+
+**Never treat a CLI-generated PDF as an approved application export without
+a successful backend release.** If the backend is unavailable or the review
+fails, disclose the blocked checks and leave the artifact as a draft. A
+candidate may correct facts only by updating their confirmed profile and
+rerunning the audit; do not silently waive unsupported claims. For use and
+limits see `tools/README_ATS_COVERAGE.md`.
+
 ### 5e. Clean up build artifacts
 
 After the final clean compile (and after 5b-5d have passed), delete the intermediate files the compile command left behind. Keep the source (`<CV_EXT>`/`<COVER_EXT>`), the `.pdf`, and every template asset (`cover.cls`, `OpenFonts/`, a custom template's files).
