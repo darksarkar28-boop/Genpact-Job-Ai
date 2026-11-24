@@ -179,6 +179,32 @@ class BackendReviewTests(TestCase):
                 self.assertEqual(response.status_code, 422)
                 self.assertFalse(response.context["report"]["allowed"])
 
+    def test_declared_title_must_match_the_complete_saved_title(self):
+        for label in ("Role", "Job title", "Position"):
+            lines = [*CV_LINES, f"{label}: Senior Data Engineer"]
+            with self.subTest(label=label):
+                result = self.client.post(reverse("application_review"), self.post_data(lines=lines))
+                self.assertEqual(result.status_code, 422)
+                self.assertContains(result, "Unsupported job title: Senior Data Engineer", status_code=422)
+                self.assertFalse(result.context["token"])
+
+    def test_experience_heading_must_match_a_single_saved_position(self):
+        profile = Profile.objects.get(user=self.user)
+        profile.data["experience"].append({"title": "Lead Analyst", "employer": "Second Labs"})
+        profile.save(update_fields=["data"])
+        for heading, allowed in [
+            ("Lead Analyst at Second Labs", True), ("Lead Analyst at Example Labs", False),
+            ("Senior Data Engineer at Example Labs", False),
+        ]:
+            lines = [heading if line == "Data Engineer at Example Labs" else line for line in CV_LINES]
+            with self.subTest(heading=heading):
+                result = self.client.post(reverse("application_review"), self.post_data(lines=lines))
+                self.assertEqual(result.status_code, 200 if allowed else 422)
+                self.assertEqual(result.context["report"]["allowed"], allowed)
+                if not allowed:
+                    self.assertContains(result, heading, status_code=422)
+                    self.assertFalse(result.context["token"])
+
     def test_cv_headings_out_of_visual_order_block(self):
         lines = [line for line in CV_LINES if line not in ("Experience", "Education")]
         lines.insert(2, "Education")
