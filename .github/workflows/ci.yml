@@ -111,6 +111,10 @@ jobs:
       - name: Run acceptance cases and publish evidence
         env:
           SUITES: ${{ matrix.suites }}
+          JOBWEB_GOOGLE_CLIENT_ID: fixture-google-client
+          JOBWEB_GOOGLE_CLIENT_SECRET: fixture-google-secret
+          JOBWEB_MICROSOFT_CLIENT_ID: fixture-microsoft-client
+          JOBWEB_MICROSOFT_CLIENT_SECRET: fixture-microsoft-secret
         run: |
           read -r -a labels <<< "$SUITES"
           python manage.py test "${labels[@]}" --testrunner webapp.acceptance_runner.AcceptanceRunner --verbosity 2

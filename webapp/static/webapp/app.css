@@ -131,3 +131,8 @@ input[type=file]::file-selector-button { padding: .45rem .65rem; margin-right: .
 .mail-accounts-grid form { margin-top: .8rem; }
 .mail-accounts-grid .hint { margin-top: .35rem; }
 @media (max-width: 46rem) { .mail-accounts-grid { grid-template-columns: minmax(0, 1fr); } }
+
+.mailbox-review { margin-bottom: 1.4rem; }
+.mailbox-review > .hint { margin: .5rem 0 .8rem; }
+.mail-signal { padding: .9rem 0; border-top: 1px solid var(--line); display: grid; gap: .3rem; }
+.mail-decisions { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: .5rem; }

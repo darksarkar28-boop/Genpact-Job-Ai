@@ -16,6 +16,7 @@
       <h3>Gmail</h3>
       {% if mail_connections.google %}
         <p class="hint">Connected{% if mail_connections.google.needs_reconnect %} — reconnect needed{% endif %}</p>
+        <form method="post" action="{% url 'mailbox_sync' 'google' %}">{% csrf_token %}<button type="submit" class="primary">Sync Gmail</button></form>
         <form method="post" action="{% url 'mailbox_disconnect' 'google' %}">{% csrf_token %}<button type="submit" class="secondary">Disconnect Gmail</button></form>
         <form method="post" action="{% url 'mailbox_connect' 'google' %}">{% csrf_token %}<button type="submit" class="secondary">Reconnect Gmail</button></form>
       {% elif google_configured %}
@@ -26,6 +27,7 @@
       <h3>Outlook</h3>
       {% if mail_connections.microsoft %}
         <p class="hint">Connected{% if mail_connections.microsoft.needs_reconnect %} — reconnect needed{% endif %}</p>
+        <form method="post" action="{% url 'mailbox_sync' 'microsoft' %}">{% csrf_token %}<button type="submit" class="primary">Sync Outlook</button></form>
         <form method="post" action="{% url 'mailbox_disconnect' 'microsoft' %}">{% csrf_token %}<button type="submit" class="secondary">Disconnect Outlook</button></form>
         <form method="post" action="{% url 'mailbox_connect' 'microsoft' %}">{% csrf_token %}<button type="submit" class="secondary">Reconnect Outlook</button></form>
       {% elif microsoft_configured %}
@@ -33,6 +35,30 @@
       {% else %}<p class="hint">Outlook integration requires administrator configuration.</p>{% endif %}
     </div>
   </div>
+</section>
+<section class="card mailbox-review" aria-labelledby="mail-review-title">
+  <h2 id="mail-review-title">Mailbox suggestions</h2>
+  <p class="hint">Each proposed stage change is held until you approve it. Offers never mean you accepted a job.</p>
+  {% for signal in mail_signals %}
+    <article class="mail-signal">
+      <h3>{{ signal.subject|default:"Message without subject" }}</h3>
+      <p class="hint">{{ signal.get_state_display }} · {{ signal.connection.get_provider_display }} · {{ signal.sender }}</p>
+      {% if signal.application %}<p>{{ signal.application.company }} · {{ signal.application.role }}</p>{% endif %}
+      <p>{{ signal.reason }}</p>
+      {% if signal.proposed_status %}<p><strong>Proposed stage:</strong> {{ signal.proposed_status }}</p>{% endif %}
+      {% if signal.received_at %}<p class="hint">Received {{ signal.received_at|date:"M j, Y H:i" }} UTC</p>{% endif %}
+      {% if signal.source_link %}<a href="{{ signal.source_link }}" target="_blank" rel="noopener noreferrer">Open source email</a>{% endif %}
+      {% if signal.state == 'pending' or signal.state == 'needs_review' %}
+        <form method="post" action="{% url 'mailbox_decide' signal.pk %}" class="mail-decisions">
+          {% csrf_token %}
+          {% if signal.state == 'pending' %}<button class="primary" type="submit" name="action" value="approve">Approve change</button>{% endif %}
+          <button class="secondary" type="submit" name="action" value="dismiss">Dismiss</button>
+        </form>
+      {% endif %}
+    </article>
+  {% empty %}
+    <p class="hint">No messages to review. Connect an account and press Sync.</p>
+  {% endfor %}
 </section>
 <section class="card board-create" aria-labelledby="board-create-title">
   <h2 id="board-create-title">Add application</h2>
