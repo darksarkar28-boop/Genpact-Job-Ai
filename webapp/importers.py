@@ -2,6 +2,7 @@
 import csv
 import io
 import json
+import logging
 import re
 import subprocess
 import sys
@@ -161,11 +162,20 @@ def read_upload(upload, *, ai=False):
     try:
         run = subprocess.run(
             [sys.executable, "-m", "webapp.importers", kind, *(["--ai"] if ai else [])], input=upload.read(MAX_UPLOAD_BYTES + 1),
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, cwd=Path(__file__).resolve().parents[1],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE if ai else subprocess.DEVNULL, cwd=Path(__file__).resolve().parents[1],
             timeout=45 if ai else 12, check=False,
         )
     except subprocess.TimeoutExpired:
         raise ImportProblem("The document took too long to read. Try a shorter copy.") from None
+    if ai and run.stderr:
+        for line in run.stderr.splitlines():
+            if line.startswith(b"JOB_AI_USAGE model_usage "):
+                try:
+                    event = json.loads(line[len(b"JOB_AI_USAGE model_usage "):])
+                    from tools.model_service import usage_event
+                    usage_event(event)
+                except (ValueError, TypeError):
+                    pass
     if run.returncode == 2:
         raise ImportProblem(json.loads(run.stdout))
     if run.returncode != 0:
@@ -174,6 +184,13 @@ def read_upload(upload, *, ai=False):
 
 
 def _worker(kind, *, ai=False):
+    if ai:
+        logger = logging.getLogger("jobai.model_usage")
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("JOB_AI_USAGE %(message)s"))
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+        logger.propagate = False
     if sys.platform.startswith("linux"):
         import resource
         # Keep the stricter limit if the operator already set one.
