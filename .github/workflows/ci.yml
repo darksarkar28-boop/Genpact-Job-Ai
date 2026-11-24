@@ -56,6 +56,10 @@ jobs:
       - run: python -m pip install playwright==1.62.0
       - run: python -m playwright install --with-deps --only-shell chromium
       - run: python manage.py test webapp.browser_smoke
+      - name: Build the document export worker
+        run: docker build -t genpact-job-ai-document-worker:local webapp/document_worker
+      - name: Compile and verify CVs and cover letters in PDF and DOCX
+        run: python manage.py test webapp.document_worker_smoke
 
   lint:
     name: Lint skills, commands, settings
