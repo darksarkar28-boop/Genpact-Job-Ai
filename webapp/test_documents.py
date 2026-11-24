@@ -13,7 +13,7 @@ from .documents import (
     claim_next_job,
     process_claimed_job,
 )
-from .models import DocumentJob, Profile
+from .models import DocumentJob, Profile, TemplateReview
 from .tests import docx, pdf
 
 
@@ -87,6 +87,7 @@ class DocumentExportTests(TestCase):
             output.write_bytes(pdf(EXTRACTED))
         else:
             output.write_bytes(docx(EXTRACTED))
+            (workdir / "output.pdf").write_bytes(pdf(EXTRACTED))
         return output
 
     def finish_next(self):
@@ -96,6 +97,31 @@ class DocumentExportTests(TestCase):
             process_claimed_job(job)
         job.refresh_from_db()
         return job
+
+    def test_source_preview_preserves_content_and_recruiter_badge_requires_evidence(self):
+        letter = "Dear Hiring Team,\nThis is the exact content I want to keep."
+        preview = self.client.post(reverse("document_preview"), {
+            "document_type": "cover_letter",
+            "output_format": "docx",
+            "template_key": "modern",
+            "role": "Engineer",
+            "company": "Example Co",
+            "cover_letter_body": letter,
+        })
+        self.assertEqual(preview.status_code, 200)
+        self.assertContains(preview, "Pre-download preview")
+        self.assertContains(preview, "This is the exact content I want to keep.")
+        self.assertContains(preview, "Recruiter review pending")
+        self.assertFalse(DocumentJob.objects.exists())
+
+        TemplateReview.objects.create(
+            template_key="modern",
+            reviewer_label="External recruiter",
+            feedback="Readable and easy to scan.",
+            approved=True,
+        )
+        reviewed = self.client.get(reverse("documents"))
+        self.assertContains(reviewed, "Recruiter-tested · External recruiter")
 
     def test_gallery_queue_deduplicates_and_pdf_can_be_previewed(self):
         page = self.client.get(reverse("documents"))
@@ -127,6 +153,11 @@ class DocumentExportTests(TestCase):
         job = self.finish_next()
         self.assertEqual(job.output_format, "docx")
         self.assertEqual(job.status, "succeeded")
+        self.assertEqual(job.verification["pages"], 1)
+        self.assertEqual(
+            job.verification["pagination_source"],
+            "headless LibreOffice rendering of generated DOCX",
+        )
 
         other = Client()
         other.force_login(get_user_model().objects.create_user("different_owner"))
@@ -210,3 +241,18 @@ class DocumentExportTests(TestCase):
         self.assertIn("--memory=", joined)
         self.assertIn("--cpus=", joined)
         self.assertEqual(command[-1], "lualatex")
+
+        cover = DocumentJob.objects.create(
+            user=self.user,
+            profile_revision=self.profile.revision,
+            document_type="cover_letter",
+            output_format="pdf",
+            template_key="classic",
+            fingerprint="f" * 64,
+            content_snapshot={
+                "profile": PROFILE,
+                "extra": {"body": "Dear Hiring Team,\nThank you.", "company": "Example", "role": "Engineer"},
+            },
+            status="running",
+        )
+        self.assertEqual(_worker_command(Path("/tmp/document-job-2"), cover)[-1], "xelatex")
