@@ -1,0 +1,44 @@
+{% extends "campus/base.html" %}
+{% block title %}{{ org.name }} · Campus{% endblock %}
+{% block content %}
+<header class="page-head"><div><a class="back" href="{% url 'campus:home' %}">All workspaces</a>
+  <h1>{{ org.name }}</h1><p class="lead">{{ member.get_role_display }}{% if member.cohort %} · {{ member.cohort.name }}{% endif %}</p></div></header>
+{% if member.role == "candidate" %}
+  <div class="campus-grid">
+    <section class="card"><h2>My cohort progress</h2><p class="hint">Your counts contribute to the cohort totals.</p>
+      <form method="post" action="{% url 'campus:progress' org.slug %}">{% csrf_token %}
+        {{ progress_form.as_p }}<button class="primary">Save progress</button>
+      </form></section>
+    <section class="card"><h2>Share a résumé for review</h2>
+      <p class="hint">Your cohort mentors can download the versions you share and comment on each. You can withdraw access at any time.</p>
+      <form method="post" enctype="multipart/form-data" action="{% url 'campus:share' org.slug %}">{% csrf_token %}
+        {{ resume_form.as_p }}<button class="primary">Share revision</button>
+      </form></section>
+  </div>
+  <section class="card campus-section"><h2>My reviews</h2>
+    <ul class="campus-list">{% for item in reviews %}
+      <li><a href="{% url 'campus:review' org.slug item.pk %}">Review {{ item.pk }}</a>
+        <span>{{ item.cohort.name }} · {% if item.withdrawn_at %}Withdrawn{% else %}Shared{% endif %}</span></li>
+      {% empty %}<li>No résumés shared yet.</li>{% endfor %}</ul></section>
+{% else %}
+  <section class="card"><div class="campus-heading"><h2>Cohort progress</h2>
+    <form method="get" class="campus-controls"><label for="filter-cohort">Cohort filter</label>
+      <select name="cohort" id="filter-cohort"><option value="">All assigned cohorts</option>
+      {% for c in cohorts %}<option value="{{ c.pk }}"{% if selected.pk == c.pk %} selected{% endif %}>{{ c.name }}</option>{% endfor %}</select>
+      <button class="secondary">Apply filter</button></form></div>
+    <dl class="campus-stats">
+      <div><dt>Confirmed profile</dt><dd>{{ stats.onboarded }} / {{ stats.total }}</dd></div>
+      <div><dt>Applied</dt><dd>{{ stats.applied }} / {{ stats.total }}</dd></div>
+      <div><dt>Interviewed</dt><dd>{{ stats.interviewed }} / {{ stats.total }}</dd></div>
+      <div><dt>Received an offer</dt><dd>{{ stats.offered }} / {{ stats.total }}</dd></div>
+    </dl><p class="hint">Denominator: active candidates in this selection. Outcomes count candidates reporting at least one event. {{ stats.reporting }} of {{ stats.total }} have reported.</p>
+  </section>
+  {% if member.role == "mentor" %}
+    <section class="card campus-section"><h2>Shared for mentor review</h2>
+      <ul class="campus-list">{% for item in reviews %}<li><a href="{% url 'campus:review' org.slug item.pk %}">{{ item.owner.user.username }}’s résumé</a> <span>{{ item.cohort.name }}</span></li>
+      {% empty %}<li>No active résumé shares in this selection.</li>{% endfor %}</ul></section>
+  {% else %}
+    {% include "campus/administration.html" %}
+  {% endif %}
+{% endif %}
+{% endblock %}

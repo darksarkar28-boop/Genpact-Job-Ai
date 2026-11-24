@@ -173,10 +173,12 @@ def visible_reviews(member):
     return reviews.none()
 
 
-def submit_resume(org_id, user, filename, document, expected_review, expected_revision):
+def submit_resume(org_id, user, filename, document, expected_review, expected_revision, expected_cohort):
     digest = sha256(document).hexdigest()
     with locked_organization(org_id) as org:
         member = member_for(org, user, Role.CANDIDATE)
+        if member.cohort_id != expected_cohort:
+            raise CampusError("Your cohort changed. Reload and confirm which mentors may see this résumé.")
         review = member.reviews.filter(withdrawn_at__isnull=True).first()
         latest = review.revisions.only("number", "sha256").first() if review else None
         if latest and latest.sha256 == digest and expected_review in (0, review.pk):

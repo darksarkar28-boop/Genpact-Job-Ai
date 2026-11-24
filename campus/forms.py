@@ -52,6 +52,7 @@ class ResumeForm(forms.Form):
     consent = forms.BooleanField(label="Share this revision with the mentors assigned to my cohort")
     current_review = forms.IntegerField(min_value=0, widget=forms.HiddenInput)
     current_revision = forms.IntegerField(min_value=0, widget=forms.HiddenInput)
+    current_cohort = forms.IntegerField(min_value=1, widget=forms.HiddenInput)
 
     def clean_document(self):
         upload = self.cleaned_data["document"]

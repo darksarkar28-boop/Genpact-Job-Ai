@@ -1,0 +1,42 @@
+<div class="campus-grid campus-section">
+  <section class="card"><h2>Cohorts and seats</h2>
+    <p><strong>{{ used }} of {{ org.seat_limit }}</strong> licensed candidate seats are occupied or reserved.</p>
+    <p class="hint">Active candidates and unexpired candidate invitations each use one seat. Deactivate a candidate or revoke an invitation to reassign a seat.</p>
+    <form method="post" action="{% url 'campus:create_cohort' org.slug %}">{% csrf_token %}
+      <label for="new-cohort">New cohort name</label><input id="new-cohort" name="name" maxlength="100" required>
+      <button class="secondary">Create cohort</button></form>
+  </section>
+  <section class="card"><h2>Invite members</h2>
+    <form method="post" action="{% url 'campus:invite_members' org.slug %}">{% csrf_token %}
+      {{ invite_form.as_p }}<button class="primary">Create invitations</button></form>
+  </section>
+</div>
+<section class="card campus-section"><h2>Pending invitations</h2>
+  <p class="hint">Send each private invitation link to its listed recipient. Links expire after seven days.</p>
+  <ul class="campus-list">{% for invite, url in invitations %}
+    <li><div><a href="{{ url }}" rel="noreferrer">Invitation for {{ invite.email }}</a>
+      <span>{{ invite.get_role_display }}{% if invite.cohort %} · {{ invite.cohort.name }}{% endif %}</span></div>
+      <form method="post" action="{% url 'campus:revoke' org.slug invite.pk %}">{% csrf_token %}<button class="link">Revoke</button></form></li>
+    {% empty %}<li>No pending invitations.</li>{% endfor %}</ul>
+</section>
+<section class="card campus-section"><h2>Member assignments</h2>
+  <ul class="campus-list">{% for person in roster %}
+    <li><div><strong>{{ person.user.username }}</strong> · {{ person.get_role_display }}
+      <span>{% if not person.active %}Inactive{% elif person.cohort %}{{ person.cohort.name }}{% elif person.role == "mentor" %}{{ person.mentor_cohorts.all|join:", "|default:"No assigned cohorts" }}{% endif %}</span></div>
+      {% if person.active %}<details class="member-actions"><summary>Manage {{ person.user.username }}</summary>
+        <form method="post" action="{% url 'campus:manage_member' org.slug person.pk %}">{% csrf_token %}
+          {% if person.role != "admin" %}
+            <label for="assignment-{{ person.pk }}">{% if person.role == "mentor" %}Assigned cohorts{% else %}Assigned cohort{% endif %}</label>
+            <select id="assignment-{{ person.pk }}" name="cohorts" {% if person.role == "mentor" %}multiple{% endif %}>
+              {% for c in cohorts %}<option value="{{ c.pk }}"{% if c.pk == person.cohort_id or c in person.mentor_cohorts.all %} selected{% endif %}>{{ c.name }}</option>{% endfor %}
+            </select><button class="secondary" name="action" value="assign">Save assignment</button>
+          {% endif %}<button class="link" name="action" value="deactivate">Deactivate member</button>
+        </form></details>{% endif %}</li>
+    {% empty %}<li>No members in this selection.</li>{% endfor %}</ul>
+</section>
+<section class="card campus-section"><h2>Access history</h2>
+  <ul class="campus-list">{% for event in events %}
+    <li><div><strong>{{ event.action }}</strong> · {{ event.subject }}<span>{% if event.actor %}{{ event.actor.username }}{% else %}Operator{% endif %}</span></div>
+      <time datetime="{{ event.created_at|date:'c' }}">{{ event.created_at|date:"M j, Y H:i T" }}</time></li>
+    {% empty %}<li>No access changes recorded.</li>{% endfor %}</ul>
+</section>
