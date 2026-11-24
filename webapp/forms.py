@@ -11,6 +11,8 @@ class ImportForm(forms.Form):
         widget=forms.ClearableFileInput(attrs={"accept": ".pdf,.docx,.zip", "aria-describedby": "file-types"}),
     )
 
+    ai_assist = forms.BooleanField(required=False, label="Optional AI assistance: send the document text to the configured model provider")
+
     def clean_document(self):
         document = self.cleaned_data["document"]
         if document.size > MAX_UPLOAD_BYTES:
