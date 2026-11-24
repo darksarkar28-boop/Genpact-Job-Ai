@@ -132,7 +132,7 @@ def _linkedin(raw):
     return draft
 
 
-def parse_document(kind, raw):
+def parse_document(kind, raw, *, ai=False):
     if kind not in SUPPORTED_TYPES or not 0 < len(raw) <= MAX_UPLOAD_BYTES:
         raise ImportProblem("Choose a nonempty PDF, DOCX or LinkedIn ZIP up to 8 MiB.")
     if kind == "zip":
@@ -144,6 +144,9 @@ def parse_document(kind, raw):
         if len(text) > MAX_TEXT:
             raise ImportProblem("This document has too much text. Choose a shorter résumé.")
         draft = parse_resume(text)
+        if ai:
+            from .ai_extract import extract_draft
+            draft = extract_draft(text, draft)
     if not any(draft.values()):
         raise ImportProblem("No profile fields were found. Try another export or enter your details manually.")
     draft = merge_profiles({}, draft)
@@ -152,14 +155,14 @@ def parse_document(kind, raw):
     return draft
 
 
-def read_upload(upload):
+def read_upload(upload, *, ai=False):
     # Parse off the web process so an expensive or malformed document cannot tie it up indefinitely.
     kind = upload.name.rsplit(".", 1)[-1].lower()
     try:
         run = subprocess.run(
-            [sys.executable, "-m", "webapp.importers", kind], input=upload.read(MAX_UPLOAD_BYTES + 1),
+            [sys.executable, "-m", "webapp.importers", kind, *(["--ai"] if ai else [])], input=upload.read(MAX_UPLOAD_BYTES + 1),
             stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, cwd=Path(__file__).resolve().parents[1],
-            timeout=12, check=False,
+            timeout=45 if ai else 12, check=False,
         )
     except subprocess.TimeoutExpired:
         raise ImportProblem("The document took too long to read. Try a shorter copy.") from None
@@ -170,7 +173,7 @@ def read_upload(upload):
     return json.loads(run.stdout)
 
 
-def _worker(kind):
+def _worker(kind, *, ai=False):
     if sys.platform.startswith("linux"):
         import resource
         # Keep the stricter limit if the operator already set one.
@@ -179,7 +182,7 @@ def _worker(kind):
             cap = min([value] + [n for n in (soft, hard) if n != resource.RLIM_INFINITY])
             resource.setrlimit(limit, (cap, hard))
     try:
-        profile = parse_document(kind, sys.stdin.buffer.read(MAX_UPLOAD_BYTES + 1))
+        profile = parse_document(kind, sys.stdin.buffer.read(MAX_UPLOAD_BYTES + 1), ai=ai)
     except ImportProblem as exc:
         print(json.dumps(str(exc)))
         return 2
@@ -191,4 +194,4 @@ def _worker(kind):
 
 
 if __name__ == "__main__":
-    raise SystemExit(_worker(sys.argv[1]))
+    raise SystemExit(_worker(sys.argv[1], ai="--ai" in sys.argv[2:]))
