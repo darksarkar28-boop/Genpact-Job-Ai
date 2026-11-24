@@ -158,8 +158,8 @@ def application_review(request):
         if not isinstance(terms_obj, dict):
             raise GateError("Posting keywords must be a JSON object")
         keywords = terms_obj.get("keywords")
-        claims = parse_json_list(values["claims"], "Candidate claims")
-        company_citations = parse_json_list(values["company_citations"], "Company citations")
+        claims = parse_json_list(values["claims"], "Candidate claims", maximum=60)
+        company_citations = parse_json_list(values["company_citations"], "Company citations", maximum=8)
         cv_data = values["cv_pdf"].read()
         cover_data = values["cover_pdf"].read() if values.get("cover_pdf") else b""
         headings = [line.strip() for line in values["visual_headings"].splitlines() if line.strip()]
@@ -204,7 +204,9 @@ def application_review(request):
                 archive.writestr("validated_cv.pdf", cv_data)
                 if cover_data:
                     archive.writestr("validated_cover_letter.pdf", cover_data)
-                public_report = {"allowed": True, "coverage": report.get("coverage"),
+                public_report = {"allowed": True, "profile_revision": profile.revision,
+                                 "checked_at": timezone.now().isoformat(),
+                                 "coverage": report.get("coverage"),
                                  "verified_sources": report.get("verified_sources", []),
                                  "pdf_sha256": report.get("pdf_sha256"),
                                  "note": report.get("note")}
