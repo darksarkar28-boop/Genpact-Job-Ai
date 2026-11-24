@@ -1,6 +1,7 @@
 {% extends "webapp/base.html" %}
 {% block content %}
 {% if profile.revision %}
+  <div class="notice"><strong>Application export check:</strong> verify CV claims, ATS keywords and PDF text order against this saved profile before releasing a final PDF. <a href="{% url 'application_review' %}">Review an application</a>.</div>
   <div class="page-head">
     <div><p class="kicker">Master profile</p><h1>{{ profile.data.full_name }}</h1>
       {% if profile.data.headline %}<p class="lead">{{ profile.data.headline }}</p>{% endif %}
