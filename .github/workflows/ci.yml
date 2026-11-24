@@ -110,9 +110,9 @@ jobs:
           python manage.py test "${labels[@]}" --testrunner webapp.acceptance_runner.AcceptanceRunner --verbosity 2
 
   document-export-integration:
-    name: Real isolated PDF/DOCX exports
+    name: Issue 2 / cloud document exports and ATS templates
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     env:
       JOBWEB_DOCUMENT_WORKER_IMAGE: genpact-job-ai-document-worker:ci
       JOBWEB_DOCUMENT_WORKER_TIMEOUT: "90"
@@ -128,7 +128,7 @@ jobs:
       - run: python -m pip install -r webapp/requirements.txt
       - name: Build isolated document worker
         run: docker build -t "$JOBWEB_DOCUMENT_WORKER_IMAGE" webapp/document_worker
-      - name: Compile and verify real PDF/DOCX exports
+      - name: Compile every ATS layout and verify real PDF/DOCX exports
         run: python manage.py test webapp.test_documents webapp.document_worker_smoke --testrunner webapp.acceptance_runner.AcceptanceRunner --verbosity 2
 
   lint:
