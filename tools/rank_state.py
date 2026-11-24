@@ -404,7 +404,7 @@ def cmd_apply(args) -> int:
             errors.append({"key": key, "error": str(exc)})
             continue
         bad_gate = next(
-            (f for f in ("location_verdict", "language_gate") if result.get(f) and result[f] not in GATE_VERDICTS),
+            (f for f in ("location_verdict", "language_gate", "eligibility_gate") if result.get(f) and result[f] not in GATE_VERDICTS),
             None,
         )
         if bad_gate:
@@ -439,6 +439,10 @@ def cmd_apply(args) -> int:
         entry["rank_date"] = today.isoformat()
         entry["location_verdict"] = result.get("location_verdict") or legacy or "PASS"
         entry["language_gate"] = result.get("language_gate") or "PASS"
+        if "eligibility_gate" in result:
+            entry["eligibility_gate"] = result["eligibility_gate"]
+        else:
+            entry.pop("eligibility_gate", None)
         if entry["language_gate"] == "PASS":
             entry.pop("language_note", None)
         else:
@@ -482,6 +486,7 @@ def cmd_apply(args) -> int:
                 "verdict": entry["rank_verdict"],
                 "location_verdict": entry["location_verdict"],
                 "language_gate": entry["language_gate"],
+                **({"eligibility_gate": entry["eligibility_gate"]} if "eligibility_gate" in entry else {}),
                 "language_note": entry.get("language_note"),
                 "deadline": entry.get("deadline"),
                 "posted_date": entry.get("posted_date"),
@@ -496,7 +501,7 @@ def cmd_apply(args) -> int:
         save_state(args.state, doc)
 
     rows.sort(key=lambda r: (r["score"], r["urgent"]), reverse=True)
-    veto = lambda r: r["location_verdict"] == "FAIL" or r["language_gate"] == "FAIL"
+    veto = lambda r: r["location_verdict"] == "FAIL" or r["language_gate"] == "FAIL" or r.get("eligibility_gate") == "FAIL"
     vetoed = [r for r in rows if veto(r)]
     ranked = [r for r in rows if not veto(r)]
     print(

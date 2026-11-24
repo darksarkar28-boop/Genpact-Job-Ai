@@ -26,7 +26,7 @@ Set JOB_AI_MODEL_CONFIG to a JSON object in the web service environment. Replace
 
 Rates are USD per million tokens. Route lists are ordered, same-tier fallbacks; temporary failures consume a conservative reservation. Each call uses a budget and an approximate conservative input token bound. This is not a monthly spending cap or a guarantee of provider billing. The HTTPS transport disables redirects, passes a network timeout and output limit, and checks returned usage. Web imports additionally run inside a time-limited subprocess. Logs contain route labels, status, token counts and estimated cost, not prompts or candidate identities.
 
-The shared Python interface is tools.model_service.route_text(workload, prompt). Workloads are extract, deduplicate, rank, draft and review. Deterministic deduplication should remain deterministic. Claude Code's existing posting-scorer and application-reviewer agents select haiku and opus respectively; their runtime settings and billing are separate from the Python transport. Existing CLI /apply drafting and /rank agent execution still use that runtime, not the Python budget service. The web ranking/drafting workflows are not yet present.
+The shared Python interface is tools.model_service.route_text(workload, prompt). Workloads are extract, deduplicate, rank, draft and review. Deterministic deduplication should remain deterministic. Claude Code's existing posting-scorer and application-reviewer agents select haiku and opus respectively; their runtime settings and billing are separate from the Python transport. The authenticated /workbench/ page runs the Python budget router for pasted posting batches, duplicate suggestions, and draft/review. The CLI /rank and /apply specifications support the same routed workflows when configured and consented, retaining the existing retrieval, grounding and export checks. Unconfigured installations retain their existing CLI runtime.
 
 ## Shared public research
 
@@ -36,7 +36,11 @@ Use an authoritative registry namespace and verified company identifier, never a
 python -m tools.refresh_public_research IN-MCA:REGISTRY-ID < reviewed-public-sources.json
 ```
 
-Run under the web service account and the same JOBWEB_DATA_DIR. The cache is in public_research.sqlite3, outside candidate profile storage. Fresh reads avoid duplicate refresh, expiry defaults to 30 days, and SQLite serializes refreshes. An authenticated GET /research/company/?employer_id=IN-MCA:REGISTRY-ID returns fresh public research or 404. Candidates have no write endpoint. Keep private candidate details, application-specific material and interview notes out of the ingestion document; review its public provenance before publishing. Cached statements always require independent verification before use in final materials. Existing CLI workspace-local cache behavior is unchanged.
+Run under the web service account and the same JOBWEB_DATA_DIR. The cache is in public_research.sqlite3, outside candidate profile storage. Fresh reads avoid duplicate refresh, expiry defaults to 30 days, and SQLite serializes refreshes. An authenticated GET /research/company/?employer_id=IN-MCA:REGISTRY-ID returns fresh public research or 404. Candidates have no write endpoint. Keep private candidate details, application-specific material and interview notes out of the ingestion document; review its public provenance before publishing. Cached statements always require independent verification before use in final materials. The workbench application action automatically reads fresh leads for a verified employer ID and displays them separately from draft text; /apply and /interview also support shared lookup. Never treat cache summaries as verified claims. Existing workspace-local cache is retained as a fallback.
+
+## Routed CLI input
+
+Run python -m tools.routed_workflows ACTION with JSON on stdin. Actions: rank (profile and jobs), deduplicate (jobs), apply (profile, job, optional employer_id), research (employer_id only). Each job contains key and text, not a URL. Use a confirmed candidate profile, and obtain permission before external processing. Results are drafts and suggestions, never automatic submissions. The rank result uses the existing weighted scoring and gate contract. Only operator-approved public ingestion writes the shared cache.
 
 ## Tests
 

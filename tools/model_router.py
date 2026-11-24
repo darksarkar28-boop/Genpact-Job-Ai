@@ -73,6 +73,9 @@ class Router:
                 # A failed remote request can still be billed. Keep its reservation.
                 self.telemetry(dict(event, status="failed", estimated_cost=reserve))
                 continue
+            except RoutingError:
+                self.telemetry(dict(event, status="rejected", estimated_cost=reserve))
+                raise
             if (not isinstance(result, Result)
                     or type(result.input_tokens) is not int or type(result.output_tokens) is not int
                     or not 0 <= result.input_tokens <= input_token_bound

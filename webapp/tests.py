@@ -219,3 +219,24 @@ class PublicResearchTests(TestCase):
                 self.assertTrue(response.json()["requires_verification"])
                 self.assertEqual(reader.get(endpoint, {"employer_id": "US:EXAMPLE"}).status_code, 404)
                 self.assertEqual(reader.post(endpoint, {"employer_id": "IN-MCA:EXAMPLE"}).status_code, 405)
+
+
+class RoutedWorkbenchTests(TestCase):
+    def test_consent_and_account_scope(self):
+        from unittest.mock import patch
+        account = get_user_model().objects.create_user("routed_owner")
+        other = get_user_model().objects.create_user("routed_other")
+        Profile.objects.create(user=account, data={"full_name": "Owner Example"}, revision=1)
+        Profile.objects.create(user=other, data={"full_name": "Other Example"}, revision=1)
+        endpoint = reverse("workbench")
+        self.assertEqual(self.client.get(endpoint).status_code, 302)
+        self.client.force_login(account)
+        with patch("webapp.routed_views.run", return_value={"ok": True}) as execute:
+            response = self.client.post(endpoint, {"action": "rank", "postings": "Python developer"})
+            self.assertEqual(response.status_code, 422)
+            execute.assert_not_called()
+            response = self.client.post(endpoint, {"action": "rank", "postings": "Python developer", "consent": "on"})
+            self.assertEqual(response.status_code, 200)
+            payload = execute.call_args.args[1]
+            self.assertEqual(payload["profile"]["full_name"], "Owner Example")
+            self.assertNotIn("Other Example", repr(payload))

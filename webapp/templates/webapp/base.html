@@ -16,6 +16,7 @@
     <div class="account">
       {% if user.is_authenticated %}
         <a href="{% url 'workspace' %}">Master profile</a>
+        <a href="{% url 'workbench' %}">AI workbench</a>
         <form action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="link" type="submit">Sign out</button></form>
       {% else %}{% block account_link %}{% endblock %}{% endif %}
     </div>
