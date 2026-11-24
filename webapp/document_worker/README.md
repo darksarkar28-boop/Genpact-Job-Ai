@@ -21,7 +21,7 @@ Useful environment variables:
 
 - `JOBWEB_DOCUMENT_WORKER_IMAGE` — container image name.
 - `JOBWEB_DOCUMENT_WORKER_RUNTIME` — container runtime executable, default `docker`.
-- `JOBWEB_DOCUMENT_WORKER_TIMEOUT` — host-side timeout in seconds, default `60`.
+- `JOBWEB_DOCUMENT_WORKER_TIMEOUT` — host-side timeout in seconds, default `90`.
 - `JOBWEB_DOCUMENT_WORKER_MEMORY` — container memory bound, default `768m`.
 - `JOBWEB_DOCUMENT_WORKER_CPUS` — CPU bound, default `1.0`.
 
