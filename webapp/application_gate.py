@@ -279,6 +279,6 @@ def audit(profile, cv_pdf, *, cover_pdf=b"", keywords, claims=(), company_citati
     return {"allowed": not errors, "errors": list(dict.fromkeys(errors)), "coverage": coverage,
             "verified_sources": verified_sources,
             "verified_pdf_pages": True,
-            "pdf_sha256": hashlib.sha256(cv_pdf + cover_pdf).hexdigest(),
+            "pdf_sha256": hashlib.sha256(len(cv_pdf).to_bytes(8, "big") + cv_pdf + len(cover_pdf).to_bytes(8, "big") + cover_pdf).hexdigest(),
             "note": "Checks exact extracted text, declared evidence, high-risk numeric/degree/employer claims, "
                     "and nominated section order; visual geometry and unexpressed semantic claims still require human review."}
