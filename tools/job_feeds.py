@@ -18,7 +18,7 @@ from tools.job_key import make_key
 
 PUBLIC = ("greenhouse", "lever", "ashby")
 PARTNER = ("linkedin", "indeed", "naukri", "hirist", "instahyre", "internshala")
-TRACKING = {"gh_src", "lever-source", "source", "ref", "trk", "fbclid", "gclid"}
+TRACKING = {"gh_src", "lever-source", "trk", "fbclid", "gclid"}
 BOARD = re.compile(r"[A-Za-z0-9_-]{1,120}\Z")
 MAX_BODY = 8 * 1024 * 1024
 
@@ -50,16 +50,19 @@ def timestamp(value):
 
 
 def canonical_url(value):
-    if not isinstance(value, str) or any(ord(c) < 32 for c in value):
+    if not isinstance(value, str) or len(value) > 2048 or any(ord(c) < 32 or c == "\\" for c in value):
         raise ValueError("invalid application URL")
     url = urlsplit(value.strip())
-    if url.scheme != "https" or not url.hostname or url.username or url.password:
+    if url.scheme != "https" or not url.hostname or url.username is not None or url.password is not None or any(c.isspace() for c in url.netloc):
         raise ValueError("application URL must be HTTPS")
     if url.port not in (None, 443):
         raise ValueError("invalid application URL port")
     query = [(k, v) for k, v in parse_qsl(url.query, keep_blank_values=True)
              if not k.lower().startswith("utm_") and k.lower() not in TRACKING]
-    return urlunsplit(("https", url.hostname.lower(), url.path or "/", urlencode(query), ""))
+    host = url.hostname.lower()
+    if ":" in host:
+        host = f"[{host}]"
+    return urlunsplit(("https", host, url.path or "/", urlencode(query), ""))
 
 
 @dataclass(frozen=True)
@@ -148,9 +151,9 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
-def fetch_json(url):
+def fetch_json(url, headers=None):
     """Bounded HTTPS read; redirects are not followed."""
-    request = Request(url, headers={"Accept": "application/json", "User-Agent": "GenpactJobAI/1"})
+    request = Request(url, headers={"Accept": "application/json", "User-Agent": "GenpactJobAI/1", **(headers or {})})
     with build_opener(NoRedirect()).open(request, timeout=15) as response:
         raw = response.read(MAX_BODY + 1)
     if len(raw) > MAX_BODY:

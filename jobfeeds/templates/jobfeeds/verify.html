@@ -1,0 +1,9 @@
+{% extends "webapp/base.html" %}
+{% block title %}Verify digest email{% endblock %}
+{% block content %}
+<section class="card"><h1>Verify digest email</h1>
+{% if valid %}<p>Confirm that this is your email address. This does not enable the digest automatically.</p>
+<form method="post">{% csrf_token %}<button type="submit">Confirm email</button></form>
+{% else %}<p>This link is invalid, expired, already used, or belongs to another account.</p>{% endif %}
+<a href="{% url 'jobfeeds:home' %}">Return to job feeds</a></section>
+{% endblock %}

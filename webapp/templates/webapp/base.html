@@ -19,6 +19,7 @@
         <a href="{% url 'workspace' %}">Master profile</a>
         <a href="{% url 'workbench' %}">AI workbench</a>
         <a href="{% url 'campus:home' %}">Campus</a>
+        <a href="{% url 'jobfeeds:home' %}">Job feeds</a>
         <form action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="link" type="submit">Sign out</button></form>
       {% else %}{% block account_link %}{% endblock %}{% endif %}
     </div>

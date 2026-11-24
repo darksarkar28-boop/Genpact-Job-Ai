@@ -26,6 +26,7 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "webapp",
     "campus",
+    "jobfeeds",
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -94,3 +95,15 @@ LOGGING = {
     "handlers": {"model_usage": {"class": "logging.StreamHandler"}},
     "loggers": {"jobai.model_usage": {"handlers": ["model_usage"], "level": "INFO", "propagate": False}},
 }
+
+
+# Operator-controlled job feed and SMTP configuration. Never expose tokens to candidates.
+JOBFEEDS_CONFIG = os.environ.get("JOBFEEDS_CONFIG", '{"boards":[],"partners":[]}')
+JOBFEEDS_SMTP_HOST = os.environ.get("JOBFEEDS_SMTP_HOST", "")
+JOBFEEDS_SMTP_PORT = int(os.environ.get("JOBFEEDS_SMTP_PORT", "587"))
+JOBFEEDS_SMTP_USER = os.environ.get("JOBFEEDS_SMTP_USER", "")
+JOBFEEDS_SMTP_PASSWORD = os.environ.get("JOBFEEDS_SMTP_PASSWORD", "")
+JOBFEEDS_SMTP_TLS = os.environ.get("JOBFEEDS_SMTP_TLS", "1") == "1"
+JOBFEEDS_FROM_EMAIL = os.environ.get("JOBFEEDS_FROM_EMAIL", "")
+JOBFEEDS_EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+JOBFEEDS_MAIL_ENABLED = bool(JOBFEEDS_SMTP_HOST and JOBFEEDS_FROM_EMAIL)

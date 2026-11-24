@@ -9,6 +9,7 @@ urlpatterns = [
     path("accounts/login/", auth.LoginView.as_view(template_name="webapp/login.html"), name="login"),
     path("accounts/logout/", auth.LogoutView.as_view(), name="logout"),
     path("workbench/", routed_views.workbench, name="workbench"),
+    path("jobs/", include("jobfeeds.urls")),
     path("campus/", include("campus.urls")),
     path("profile/", views.workspace, name="workspace"),
     path("profile/import/", views.import_profile, name="import"),
