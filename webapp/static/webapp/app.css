@@ -124,3 +124,10 @@ input[type=file]::file-selector-button { padding: .45rem .65rem; margin-right: .
 .board-history li + li { margin-top: .45rem; }
 .board-live { margin-bottom: .35rem; }
 @media (max-width: 46rem) { .board-create-form { grid-template-columns: minmax(0, 1fr); } }
+
+.mail-accounts { margin-bottom: 1.4rem; }
+.mail-accounts-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem; margin-top: 1.1rem; }
+.mail-accounts-grid > div { border: 1px solid var(--line); border-radius: .5rem; padding: 1rem; }
+.mail-accounts-grid form { margin-top: .8rem; }
+.mail-accounts-grid .hint { margin-top: .35rem; }
+@media (max-width: 46rem) { .mail-accounts-grid { grid-template-columns: minmax(0, 1fr); } }

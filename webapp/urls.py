@@ -1,7 +1,7 @@
 from django.contrib.auth import views as auth
 from django.urls import path
 
-from . import board, routed_views, views
+from . import board, mailbox, routed_views, views
 
 urlpatterns = [
     path("", views.home, name="home"),
@@ -11,6 +11,9 @@ urlpatterns = [
     path("workbench/", routed_views.workbench, name="workbench"),
     path("profile/", views.workspace, name="workspace"),
     path("applications/", board.application_board, name="application_board"),
+    path("applications/mail/<str:provider>/connect/", mailbox.connect, name="mailbox_connect"),
+    path("applications/mail/<str:provider>/callback/", mailbox.callback, name="mailbox_callback"),
+    path("applications/mail/<str:provider>/disconnect/", mailbox.disconnect, name="mailbox_disconnect"),
     path("applications/revision/", board.application_board_revision, name="application_board_revision"),
     path("applications/new/", board.application_create, name="application_create"),
     path("applications/<int:application_id>/move/", board.application_move, name="application_move"),

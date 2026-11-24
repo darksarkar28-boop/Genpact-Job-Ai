@@ -12,7 +12,8 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 
-from .models import Application, ApplicationStatus, ApplicationStatusEvent
+from .models import Application, ApplicationStatus, ApplicationStatusEvent, MailConnection, MailSignal
+from .mail_oauth import configured
 
 
 class ApplicationForm(forms.ModelForm):
@@ -60,6 +61,11 @@ def _board(request, form=None, status=200):
         "statuses": ApplicationStatus.choices,
         "form": form if form is not None else ApplicationForm(),
         "revision": _revision(request.user),
+        "mail_connections": {c.provider: c for c in MailConnection.objects.filter(user=request.user)},
+        "google_configured": configured("google"),
+        "microsoft_configured": configured("microsoft"),
+        "mail_signals": MailSignal.objects.filter(connection__user=request.user).select_related(
+            "application", "connection").exclude(state="ignored").order_by("-created_at")[:30],
     }, status=status)
 
 

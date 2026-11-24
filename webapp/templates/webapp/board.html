@@ -8,6 +8,32 @@
     <p class="lead">Move applications between stages. Every move is saved with a timestamp and appears in your other open sessions.</p>
   </div>
 </div>
+<section class="card mail-accounts" aria-labelledby="mail-accounts-title">
+  <h2 id="mail-accounts-title">Email connections</h2>
+  <p class="hint">Read-only mailbox access. Status changes are proposed for your approval, never applied automatically.</p>
+  <div class="mail-accounts-grid">
+    <div>
+      <h3>Gmail</h3>
+      {% if mail_connections.google %}
+        <p class="hint">Connected{% if mail_connections.google.needs_reconnect %} — reconnect needed{% endif %}</p>
+        <form method="post" action="{% url 'mailbox_disconnect' 'google' %}">{% csrf_token %}<button type="submit" class="secondary">Disconnect Gmail</button></form>
+        <form method="post" action="{% url 'mailbox_connect' 'google' %}">{% csrf_token %}<button type="submit" class="secondary">Reconnect Gmail</button></form>
+      {% elif google_configured %}
+        <form method="post" action="{% url 'mailbox_connect' 'google' %}">{% csrf_token %}<button type="submit" class="primary">Connect Gmail</button></form>
+      {% else %}<p class="hint">Gmail integration requires administrator configuration.</p>{% endif %}
+    </div>
+    <div>
+      <h3>Outlook</h3>
+      {% if mail_connections.microsoft %}
+        <p class="hint">Connected{% if mail_connections.microsoft.needs_reconnect %} — reconnect needed{% endif %}</p>
+        <form method="post" action="{% url 'mailbox_disconnect' 'microsoft' %}">{% csrf_token %}<button type="submit" class="secondary">Disconnect Outlook</button></form>
+        <form method="post" action="{% url 'mailbox_connect' 'microsoft' %}">{% csrf_token %}<button type="submit" class="secondary">Reconnect Outlook</button></form>
+      {% elif microsoft_configured %}
+        <form method="post" action="{% url 'mailbox_connect' 'microsoft' %}">{% csrf_token %}<button type="submit" class="primary">Connect Outlook</button></form>
+      {% else %}<p class="hint">Outlook integration requires administrator configuration.</p>{% endif %}
+    </div>
+  </div>
+</section>
 <section class="card board-create" aria-labelledby="board-create-title">
   <h2 id="board-create-title">Add application</h2>
   <form method="post" action="{% url 'application_create' %}" class="board-create-form">
