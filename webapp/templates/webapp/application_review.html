@@ -44,6 +44,12 @@
         <p class="errorlist"><strong>Blocked:</strong> correct the following issues before release.</p>
         <ul>{% for error in report.errors %}<li>{{ error }}</li>{% endfor %}</ul>
       {% endif %}
+      {% if report.verified_sources %}
+        <h3>Independently checked public sources</h3>
+        <ul>{% for source in report.verified_sources %}
+          <li><a href="{{ source.url }}" rel="noopener noreferrer">{{ source.url }}</a>: {{ source.claim }}</li>
+        {% endfor %}</ul>
+      {% endif %}
       {% if report.coverage %}
         <h3>Posting keyword coverage</h3>
         <p class="hint">Exact matches / all terms; synonyms are counted separately.</p>
