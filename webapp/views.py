@@ -1,3 +1,5 @@
+from django.conf import settings
+from django.http import JsonResponse
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
@@ -98,7 +100,7 @@ def import_profile(request):
     upload = ImportForm(request.POST, request.FILES)
     if upload.is_valid():
         try:
-            draft = merge_profiles(profile.data, read_upload(upload.cleaned_data["document"]))
+            draft = merge_profiles(profile.data, read_upload(upload.cleaned_data["document"], ai=upload.cleaned_data["ai_assist"]))
             if any(len(draft[key]) > MAX_ENTRIES for key in ("education", "experience")):
                 raise ImportProblem("This import would exceed 50 entries per section. Choose a shorter version.")
         except ImportProblem as exc:
@@ -219,3 +221,20 @@ def application_review(request):
         "form": form, "report": report, "token": token if request.POST["action"] == "review" else None,
         "requires_reupload": True,
     }, status=200 if report["allowed"] else 422)
+
+
+@login_required
+@never_cache
+@require_GET
+def company_research(request):
+    from tools.routed_workflows import research
+    try:
+        employer_id = request.GET.get("employer_id")
+        if not employer_id:
+            raise ValueError("missing employer identifier")
+        result = research(employer_id, settings.DATA_DIR)
+    except ValueError:
+        return JsonResponse({"error": "Use a verified registry namespace and employer identifier."}, status=400)
+    if result is None:
+        return JsonResponse({"error": "No fresh public research is available."}, status=404)
+    return JsonResponse(result)

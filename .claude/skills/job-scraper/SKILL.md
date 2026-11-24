@@ -161,6 +161,8 @@ For each new job, do a rapid fit check (NOT the full evaluation from `04-job-eva
 
 ### Step 4: Deduplicate & Store
 
+After deterministic URL and canonical-key checks, only if the operator configured `JOB_AI_MODEL_CONFIG` and the user explicitly consents, send genuinely ambiguous remaining posting pairs (cleaned text and unchanged keys, no candidate profile, maximum ten per batch) as stdin JSON `jobs` to `python -m tools.routed_workflows deduplicate --consent`. The returned pairs are suggestions for user review, not deletion instructions. On a routing failure keep the distinct entries and report the unavailable optional check. Exact canonical deduplication remains authoritative.
+
 1. Keep the canonical key rule; `scrape_state.py store` calls `tools/job_key.py`'s `make_key` for every inserted entry, so a separate key subprocess per job is unnecessary:
 
 ```bash
