@@ -183,3 +183,121 @@ class MailboxReviewBrowser(StaticLiveServerTestCase):
         self.assertEqual(ApplicationStatusEvent.objects.filter(origin="google").count(), 1)
         self.assertEqual(MailSignal.objects.filter(connection__provider="google").count(), 1)
         self.assertEqual(MailSignal.objects.get(provider_message_id="fixture-outlook-1").state, "dismissed")
+
+
+    def test_ambiguous_and_conflicting_mail_can_be_resolved_safely_in_two_sessions(self):
+        """The candidate selects the right employer and stage, without overriding another tab."""
+        from unittest.mock import patch
+
+        from django.utils import timezone
+
+        from .mail_classifier import import_signals
+        from .models import Application, ApplicationStatusEvent, MailConnection, MailSignal
+
+        second = Application.objects.create(
+            user=self.user, company="Example Labs Research",
+            role="Research Engineer", status="applied",
+        )
+        conflict_app = Application.objects.create(
+            user=self.user, company="Unique Vision Labs",
+            role="Analyst", status="applied",
+        )
+        now = timezone.now()
+        ambiguous = {
+            "id": "ambiguous-browser", "subject": "Example Labs and Example Labs Research interview invitation",
+            "sender": "hr@examplelabs.com", "body": "Please schedule an interview for this application.",
+            "received_at": now,
+            "link": "https://mail.google.com/mail/u/0/#all/ambiguousbrowser",
+        }
+        conflict1 = {
+            "id": "conflict-browser-1", "subject": "Unique Vision Labs technical interview invitation",
+            "sender": "hr@uniquevisionlabs.com", "body": "Please schedule a technical interview.",
+            "received_at": now,
+            "link": "https://mail.google.com/mail/u/0/#all/conflictbrowser1",
+        }
+        conflict2 = {
+            "id": "conflict-browser-2", "subject": "Unique Vision Labs formal offer letter",
+            "sender": "hr@uniquevisionlabs.com", "body": "We are pleased to offer a position.",
+            "received_at": now,
+            "link": "https://mail.google.com/mail/u/0/#all/conflictbrowser2",
+        }
+        originals = [ambiguous, conflict1, conflict2]
+        connection = MailConnection.objects.get(user=self.user, provider="google")
+        self.assertEqual(import_signals(connection, originals), 3)
+        self.assertEqual(
+            set(MailSignal.objects.values_list("state", flat=True)),
+            {"needs_review"},
+        )
+
+        with patch("webapp.mailbox.load_messages", return_value=originals):
+            with sync_playwright() as runtime:
+                browser = runtime.chromium.launch(executable_path=os.environ.get("JOBWEB_TEST_CHROMIUM"))
+                try:
+                    writer = self.open_board(browser.new_context(), self.user.username)
+                    reader = self.open_board(browser.new_context(), self.user.username)
+                    article = writer.locator("article.mail-signal").filter(has_text=ambiguous["subject"])
+                    expect(article).to_be_visible()
+                    expect(writer.locator("article.mail-signal").filter(
+                        has_text=conflict2["subject"],
+                    )).to_be_visible()
+
+                    article.get_by_label("Application for this email").select_option(f"{self.application.pk}:0")
+                    article.get_by_label("Intended stage").select_option("interview")
+                    article.get_by_role("checkbox", name=re.compile("I reviewed the source email")).check()
+
+                    # A different signed-in tab makes a manual change after the
+                    # candidate first chose an application for the email.
+                    other_card = reader.locator("article.board-card").filter(
+                        has=reader.get_by_role("heading", name="Data Engineer"),
+                    )
+                    other_card.get_by_label("Move to stage").select_option("rejected")
+                    other_card.get_by_role("button", name="Save change").click()
+                    expect(reader.get_by_role("region", name="Rejected", exact=True).get_by_role(
+                        "heading", name="Data Engineer",
+                    )).to_be_visible()
+
+                    article.get_by_role("button", name="Resolve manually").click()
+                    expect(writer.locator("body")).to_contain_text(
+                        "Application stage changed in another session",
+                    )
+
+                    # New explicit decision targets the other plausible employer,
+                    # and the reader tab observes a single source-linked stage.
+                    writer.goto(self.live_server_url + reverse("application_board"))
+                    article = writer.locator("article.mail-signal").filter(has_text=ambiguous["subject"])
+                    article.get_by_label("Application for this email").select_option(f"{second.pk}:0")
+                    article.get_by_label("Intended stage").select_option("interview")
+                    article.get_by_role("checkbox", name=re.compile("I reviewed the source email")).check()
+                    article.get_by_role("button", name="Resolve manually").click()
+
+                    reader.bring_to_front()
+                    review_card = reader.locator("article.board-card").filter(
+                        has=reader.get_by_role("heading", name="Research Engineer"),
+                    )
+                    interview = reader.get_by_role("region", name="Interview", exact=True)
+                    expect(interview.get_by_role("heading", name="Research Engineer")).to_be_visible(timeout=22000)
+                    review_card.get_by_text("History", exact=True).click()
+                    expect(review_card.get_by_role("link", name="Source email")).to_be_visible()
+                    expect(reader.get_by_role("region", name="Rejected", exact=True).get_by_role(
+                        "heading", name="Data Engineer",
+                    )).to_be_visible()
+
+                    writer.get_by_role("button", name="Sync Gmail").click()
+                    writer.get_by_role("button", name="Sync Gmail").click()
+                    expect(writer.get_by_role("region", name="Interview", exact=True).get_by_role(
+                        "heading", name="Research Engineer",
+                    )).to_be_visible()
+                finally:
+                    browser.close()
+
+        self.application.refresh_from_db()
+        second.refresh_from_db()
+        conflict_app.refresh_from_db()
+        self.assertEqual((self.application.status, second.status, conflict_app.status),
+                         ("rejected", "interview", "applied"))
+        self.assertEqual(MailSignal.objects.count(), 3)  # No replay duplicates
+        self.assertEqual(ApplicationStatusEvent.objects.filter(
+            application=second, origin="manual_mail_review",
+        ).count(), 1)
+        self.assertEqual(ApplicationStatusEvent.objects.get(application=second).source_message_id,
+                         ambiguous["id"])
