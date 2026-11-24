@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 class Profile(models.Model):
@@ -56,5 +57,5 @@ class TemplateReview(models.Model):
     reviewer_label = models.CharField(max_length=120)
     feedback = models.TextField()
     approved = models.BooleanField(default=False)
-    reviewed_at = models.DateTimeField(default=__import__("django.utils.timezone", fromlist=["now"]).now)
+    reviewed_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
