@@ -113,7 +113,8 @@ def decide(request, signal_id):
             state="approved", decided_at=timezone.now())
         if not claimed:
             # Concurrent approval; roll back the tentative application update.
-            raise RuntimeError("Mailbox proposal raced with another approval.")
+            transaction.set_rollback(True)
+            return HttpResponse("Proposal was handled by another session.", status=409)
         ApplicationStatusEvent.objects.create(
             application=app, before=app.status, after=signal.proposed_status,
             origin=signal.connection.provider,

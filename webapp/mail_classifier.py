@@ -70,6 +70,14 @@ def import_signals(connection, messages):
         app, match_reason = match_application(msg, applications)
         stage, reason = proposed_stage(msg, app) if app else ("", match_reason)
         state = "pending" if stage else ("needs_review" if app is None or "Conflicts" in reason or "conflicting" in reason else "ignored")
+        if app and stage and msg.get("received_at"):
+            previous = MailSignal.objects.filter(
+                application=app, state="approved", received_at__isnull=False,
+            ).order_by("-received_at").first()
+            if previous and previous.received_at > msg["received_at"]:
+                stage = ""
+                state = "needs_review"
+                reason = "Email predates an already approved update; review manually."
         # Never store message body or an access token.
         with transaction.atomic():
             signal, created = MailSignal.objects.get_or_create(
