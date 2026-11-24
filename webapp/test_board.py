@@ -176,3 +176,13 @@ class LegacyTrackerImportTests(TestCase):
             self.client.post(endpoint, {"status": "hired", "version": 0,
                                        "confirm_offer_decision": "yes"}), reverse("application_board"))
         self.assertEqual(app.events.order_by("-id").first().origin, "manual_offer_decision")
+
+
+
+class AuditOriginSchemaTests(TestCase):
+    def test_longest_origin_label_fits_strict_database_column(self):
+        # SQLite accepts oversized varchar values; PostgreSQL would reject the insert.
+        # Keep this assertion independent of backend-specific varchar enforcement.
+        origin = ApplicationStatusEvent._meta.get_field("origin")
+        self.assertGreaterEqual(origin.max_length, len("manual_offer_decision"))
+        self.assertGreaterEqual(origin.max_length, len("tracker_import"))

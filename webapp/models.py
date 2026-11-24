@@ -48,7 +48,7 @@ class ApplicationStatusEvent(models.Model):
     application = models.ForeignKey(Application, on_delete=models.CASCADE, related_name="events")
     before = models.CharField(max_length=20, blank=True)
     after = models.CharField(max_length=20, choices=ApplicationStatus.choices)
-    origin = models.CharField(max_length=16, default="manual")
+    origin = models.CharField(max_length=32, default="manual")
     mail_signal = models.ForeignKey(
         "MailSignal", on_delete=models.SET_NULL, null=True, blank=True,
         related_name="status_events",

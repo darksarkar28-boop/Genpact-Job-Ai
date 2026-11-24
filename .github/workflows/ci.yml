@@ -89,7 +89,8 @@ jobs:
             suites: webapp.test_board webapp.browser_smoke.BrowserBoard
           - feature: "Issue 5 / Gmail and Outlook connections"
             browser: true
-            suites: webapp.browser_mailbox
+            # Backend provider fixtures and browser acceptance belong to this issue's gate.
+            suites: webapp.test_mailbox webapp.browser_mailbox
           - feature: "Issue 6 / application review and final download"
             browser: true
             suites: tests.test_ats_coverage webapp.tests_application webapp.browser_application
