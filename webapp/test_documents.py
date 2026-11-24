@@ -239,6 +239,12 @@ class DocumentExportTests(TestCase):
         active.refresh_from_db()
         self.assertEqual(active.status, DocumentJob.Status.RUNNING)
         self.assertIsNone(claim_next_job())
+        with patch("webapp.documents._run_isolated_worker", side_effect=DocumentProblem("Another failure")):
+            process_claimed_job(active)
+        with self.assertRaises(DocumentProblem):
+            retry_document_job(second_request)
+        active.refresh_from_db()
+        self.assertEqual((active.status, active.attempt), (DocumentJob.Status.FAILED, 2))
 
     def test_cover_letter_requires_text_and_template_switch_preserves_content(self):
         invalid = self.queue(document_type="cover_letter")

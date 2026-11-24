@@ -121,17 +121,15 @@ def queue_document_job(user, profile: Profile, payload: dict):
 def retry_document_job(job: DocumentJob):
     if job.status != DocumentJob.Status.FAILED:
         raise DocumentProblem("Only failed exports can be retried.")
-    job.status = DocumentJob.Status.QUEUED
-    job.error = ""
-    job.artifact_name = ""
-    job.artifact_sha256 = ""
-    job.verification = {}
-    job.started_at = None
-    job.finished_at = None
-    job.save(update_fields=[
-        "status", "error", "artifact_name", "artifact_sha256", "verification",
-        "started_at", "finished_at", "updated_at",
-    ])
+    updated = DocumentJob.objects.filter(
+        pk=job.pk, status=DocumentJob.Status.FAILED, attempt=job.attempt,
+    ).update(
+        status=DocumentJob.Status.QUEUED, error="", artifact_name="", artifact_sha256="",
+        verification={}, started_at=None, finished_at=None, updated_at=timezone.now(),
+    )
+    if not updated:
+        raise DocumentProblem("This export attempt has already been retried. Reload to see its current status.")
+    job.refresh_from_db()
     return job
 
 
