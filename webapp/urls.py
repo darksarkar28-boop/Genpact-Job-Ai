@@ -11,4 +11,5 @@ urlpatterns = [
     path("profile/", views.workspace, name="workspace"),
     path("profile/import/", views.import_profile, name="import"),
     path("profile/edit/", views.edit_profile, name="edit"),
+    path("applications/review/", views.application_review, name="application_review"),
 ]
