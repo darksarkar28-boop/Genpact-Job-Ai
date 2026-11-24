@@ -21,7 +21,7 @@ from pypdf import PdfReader
 from tools.ats_coverage import evaluate, has_term, normalized
 
 MAX_PDF = 8 * 1024 * 1024
-MAX_SOURCE = 262_144
+MAX_SOURCE = 1_048_576
 NUMBER = re.compile(r"(?<!\w)(?:[$€£₹]\s*)?\d+(?:[.,]\d+)?\s*(?:%|percent|million|billion|thousand|[kKmM]\b|users\b|clients\b|employees\b|people\b|projects\b|engineers\b)", re.I)
 YEAR = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
 DEGREE = re.compile(r"\b(?:B\.?\s?Sc|M\.?\s?Sc|B\.?\s?Tech|M\.?\s?Tech|MBA|Ph\.?\s?D|Bachelor(?:'s)?|Master(?:'s)?|Doctorate)\b", re.I)
@@ -30,7 +30,7 @@ EMPLOYER = re.compile(r"\b(?i:(?:worked|working|employed|engineer|analyst|manage
 COMPANY_FACT = re.compile(r"\b(?:founded|launched|announced|raised|acquired|operates|headquartered|reported|increased|decreased|employs)\b", re.I)
 NAMED_COMPANY_FACT = re.compile(
     r"\b(?!We\b|Our\b|They\b|My\b)[A-Z][\w&.-]+(?:\s+[A-Z][\w&.-]+){0,4}\s+(?:has\s+)?"
-    r"(?:founded|launched|announced|raised|acquired|operates|reported|increased|decreased|employs)\b",
+    r"(?:founded|launched|announced|raised|acquired|operates|reported|increased|decreased|employs|is|has|provides|serves|develops)\b",
     0,
 )
 
