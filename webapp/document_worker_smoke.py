@@ -1,4 +1,5 @@
 """Real integration tests for the built isolated document-worker image."""
+import hashlib
 import io
 import json
 from pathlib import Path
@@ -6,24 +7,41 @@ from tempfile import TemporaryDirectory
 import zipfile
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
-from .documents import artifact_file, claim_next_job, process_claimed_job, queue_document_job
+from .documents import artifact_file
 from .models import DocumentJob, Profile
 from .test_documents import PROFILE
 
 
 class DocumentWorkerSmokeTests(TestCase):
     def _process(self, owner, profile, payload):
-        job, created = queue_document_job(owner, profile, payload)
-        self.assertTrue(created)
-        claimed = claim_next_job()
-        self.assertEqual(claimed.pk, job.pk)
-        process_claimed_job(claimed)
+        self.client.force_login(owner)
+        queued = self.client.post(reverse("document_queue"), payload)
+        self.assertRedirects(queued, reverse("documents"))
+        job = DocumentJob.objects.get(user=owner, status=DocumentJob.Status.QUEUED)
+        self.assertEqual(job.profile_revision, profile.revision)
+        status_url = reverse("document_status", args=[job.pk])
+        self.assertEqual(self.client.get(status_url).json()["status"], "queued")
+        call_command("run_document_worker", "--once")
         job.refresh_from_db()
         self.assertEqual(job.status, DocumentJob.Status.SUCCEEDED, job.error)
-        self.assertTrue(artifact_file(job).is_file())
+        status = self.client.get(status_url).json()
+        self.assertEqual(status["status"], "succeeded")
+        download = self.client.get(status["download_url"])
+        self.assertEqual(download.status_code, 200)
+        data = b"".join(download.streaming_content)
+        self.assertEqual(hashlib.sha256(data).hexdigest(), job.artifact_sha256)
+        if job.output_format == DocumentJob.OutputFormat.PDF:
+            preview = self.client.get(status["preview_url"])
+            self.assertEqual(preview["Content-Type"], "application/pdf")
+            self.assertIn("inline", preview["Content-Disposition"])
+            self.assertEqual(b"".join(preview.streaming_content), data)
+        else:
+            with zipfile.ZipFile(io.BytesIO(data)) as docx:
+                self.assertIn("word/document.xml", docx.namelist())
         self.assertEqual(job.verification["contact_fields_checked"], ["email", "phone"])
         self.assertGreaterEqual(job.verification["pages"], 1)
         return job

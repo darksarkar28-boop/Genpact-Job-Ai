@@ -15,6 +15,7 @@ from .documents import (
     _worker_command,
     claim_next_job,
     process_claimed_job,
+    retry_document_job,
 )
 from .models import DocumentJob, Profile, TemplateReview
 from .tests import docx, pdf
@@ -218,6 +219,26 @@ class DocumentExportTests(TestCase):
         job = self.finish_next()
         self.assertEqual(job.status, DocumentJob.Status.SUCCEEDED)
         self.assertEqual(job.attempt, 2)
+
+    def test_duplicate_retry_does_not_reset_an_already_claimed_job(self):
+        self.queue()
+        first = claim_next_job()
+        with patch("webapp.documents._run_isolated_worker", side_effect=DocumentProblem("Compile failed")):
+            process_claimed_job(first)
+        # Two requests have each loaded the same failed attempt. A worker
+        # claims the first retry before the second request completes.
+        first.refresh_from_db()
+        second_request = DocumentJob.objects.get(pk=first.pk)
+        retry_document_job(first)
+        active = claim_next_job()
+        self.assertEqual((active.pk, active.attempt), (first.pk, 2))
+        try:
+            retry_document_job(second_request)
+        except DocumentProblem:
+            pass  # A conflict or an idempotent no-op preserves the active attempt.
+        active.refresh_from_db()
+        self.assertEqual(active.status, DocumentJob.Status.RUNNING)
+        self.assertIsNone(claim_next_job())
 
     def test_cover_letter_requires_text_and_template_switch_preserves_content(self):
         invalid = self.queue(document_type="cover_letter")
