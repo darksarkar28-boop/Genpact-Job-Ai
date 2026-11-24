@@ -146,8 +146,9 @@ class MailboxReviewBrowser(StaticLiveServerTestCase):
                     writer.get_by_role("button", name="Sync Gmail").click()
                     expect(writer.get_by_role("heading", name=interview["subject"])).to_be_visible()
                     expect(writer.get_by_role("button", name="Approve change")).to_be_visible()
-                    self.application.refresh_from_db()
-                    self.assertEqual(self.application.status, "applied")  # Consent still required.
+                    expect(writer.get_by_role("region", name="Applied", exact=True).get_by_role(
+                        "heading", name="Data Engineer",
+                    )).to_be_visible()  # Consent still required.
 
                     # The other authenticated tab learns of the new proposal by polling.
                     expect(reader.get_by_role("heading", name=interview["subject"])).to_be_visible(timeout=20000)
@@ -157,23 +158,28 @@ class MailboxReviewBrowser(StaticLiveServerTestCase):
                     expect(writer.get_by_role("region", name="Interview", exact=True).get_by_role(
                         "heading", name="Data Engineer",
                     )).to_be_visible(timeout=20000)
-                    self.application.refresh_from_db()
-                    self.assertEqual(self.application.status, "interview")
-                    self.assertEqual(ApplicationStatusEvent.objects.filter(origin="google").count(), 1)
-
                     writer.get_by_role("button", name="Sync Gmail").click()
-                    self.assertEqual(MailSignal.objects.filter(connection__provider="google").count(), 1)
+                    self.assertEqual(writer.get_by_role("heading", name=interview["subject"]).count(), 1)
 
                     writer.get_by_role("button", name="Sync Outlook").click()
                     expect(writer.get_by_role("heading", name=offer["subject"])).to_be_visible()
-                    self.application.refresh_from_db()
-                    self.assertEqual(self.application.status, "interview")
+                    expect(writer.get_by_role("region", name="Interview", exact=True).get_by_role(
+                        "heading", name="Data Engineer",
+                    )).to_be_visible()
                     writer.get_by_role("button", name="Dismiss").click()
-                    self.application.refresh_from_db()
-                    self.assertEqual(self.application.status, "interview")
+                    expect(writer.get_by_role("region", name="Interview", exact=True).get_by_role(
+                        "heading", name="Data Engineer",
+                    )).to_be_visible()
 
                     outsider = self.open_board(browser.new_context(), self.other_user.username)
                     self.assertEqual(outsider.get_by_role("heading", name=offer["subject"]).count(), 0)
                     self.assertEqual(outsider.get_by_role("heading", name=interview["subject"]).count(), 0)
                 finally:
                     browser.close()
+
+        # Django ORM checks run after Playwright has left its async context.
+        self.application.refresh_from_db()
+        self.assertEqual(self.application.status, "interview")
+        self.assertEqual(ApplicationStatusEvent.objects.filter(origin="google").count(), 1)
+        self.assertEqual(MailSignal.objects.filter(connection__provider="google").count(), 1)
+        self.assertEqual(MailSignal.objects.get(provider_message_id="fixture-outlook-1").state, "dismissed")
