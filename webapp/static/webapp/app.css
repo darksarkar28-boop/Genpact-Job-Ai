@@ -136,3 +136,37 @@ input[type=file]::file-selector-button { padding: .45rem .65rem; margin-right: .
   .account, .brand { gap: .45rem; }
   .nav { flex-wrap: wrap; padding-block: .65rem; }
 }
+
+.export-actions { display: flex; justify-content: flex-end; gap: .65rem; flex-wrap: wrap; }
+.reviewed { color: #15543c !important; font-weight: 650 !important; }
+.pending-review { color: #7a6a3a !important; }
+.preview-section { margin-top: 2.2rem; }
+.paper-preview {
+  max-width: 52rem; margin-inline: auto; padding: clamp(1.5rem, 4vw, 3rem);
+  background: white; border: 1px solid #cfd5d2; border-radius: .25rem;
+  box-shadow: 0 .7rem 2rem #152a2012; color: #202624;
+}
+.preview-head { padding-bottom: .8rem; margin-bottom: .85rem; border-bottom: 1px solid #d8dedb; }
+.preview-head.centered { text-align: center; }
+.preview-head h3 { font: 700 clamp(1.7rem, 3vw, 2.3rem)/1.1 var(--display); }
+.preview-head p { margin-top: .35rem; font-size: .9rem; color: #51645c; }
+.paper-preview section + section { margin-top: 1rem; }
+.paper-preview h4 { margin: 0 0 .35rem; font-size: 1rem; letter-spacing: .015em; }
+.preview-entry + .preview-entry { margin-top: .7rem; }
+.preview-entry { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .15rem .8rem; }
+.preview-entry span { color: #66756f; font-size: .85rem; }
+.preview-entry p { grid-column: 1 / -1; margin-top: .2rem; font-size: .93rem; }
+.preview-modern .preview-head, .preview-compact .preview-head, .preview-executive .preview-head,
+.preview-academic .preview-head, .preview-technical .preview-head { text-align: left; }
+.preview-compact { font-size: .91rem; padding: 1.45rem; }
+.preview-executive { padding: 3.1rem; }
+.preview-minimal .preview-head, .preview-clean .preview-head { border-bottom: 0; }
+.preview-technical h4, .preview-classic h4, .preview-executive h4, .preview-academic h4 {
+  padding-bottom: .2rem; border-bottom: 1px solid #cfd7d3;
+}
+@media (max-width: 30rem) {
+  .export-actions { justify-content: stretch; }
+  .export-actions .primary, .export-actions .secondary { flex: 1 1 100%; }
+  .preview-entry { grid-template-columns: 1fr; }
+  .preview-entry p { grid-column: 1; }
+}
