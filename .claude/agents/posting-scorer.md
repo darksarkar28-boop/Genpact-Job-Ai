@@ -1,6 +1,7 @@
 ---
 name: posting-scorer
 description: Fetches a batch of scraped postings, runs the integrity gate on each, and scores them against the candidate rubric the orchestrator passes inline. Dispatched by /rank Step 2. Reads and fetches only; cannot edit or write files.
+model: haiku
 tools: Read, Glob, WebFetch, WebSearch, Bash
 ---
 
