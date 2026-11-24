@@ -19,5 +19,6 @@ urlpatterns = [
     path("documents/<int:job_id>/status/", views.document_status, name="document_status"),
     path("documents/<int:job_id>/retry/", views.retry_document, name="document_retry"),
     path("documents/<int:job_id>/download/", views.document_download, name="document_download"),
+    path("documents/release/review/", views.approve_document_release, name="document_release_review"),
     path("applications/review/", views.application_review, name="application_review"),
 ]
