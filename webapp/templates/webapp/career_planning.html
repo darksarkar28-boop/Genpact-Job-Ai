@@ -1,0 +1,29 @@
+{% extends "webapp/base.html" %}
+{% block title %}Career preparation{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Career preparation</h1><p class="lead">Explore compensation and prioritize skills using evidence you provide.</p></div></div>
+{% if not profile %}
+<section class="card"><p>Save your confirmed master profile before planning.</p><a href="{% url 'workspace' %}">Open master profile</a></section>
+{% else %}
+<section class="card stack">
+<h2>Role and source observations</h2>
+<p>Using saved profile revision {{ profile.revision }}. All observations are user-supplied and unverified; enter annual base salaries only. No currency conversion or automatic submission. Role details and your offer are saved privately; raw salary observations and posting lists are not stored.</p>
+<details><summary>Example input format (fictional data)</summary><p>Salary observations:</p><pre class="preserve" style="white-space:pre-wrap">[{"role":"Engineer","location":"Delhi","level":"Junior","currency":"INR","annual_base":500000,"date":"2025-01-01","source":"https://example.com/salary"}]</pre><p>Posting evidence:</p><pre class="preserve" style="white-space:pre-wrap">[{"role":"Engineer","source":"https://example.com/posting","required_skills":["Python","SQL"]}]</pre></details>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button class="primary" type="submit">Analyze evidence</button></form>
+<p><a href="{% url 'interview-home' %}">Open timed mock interviews</a> (uses your saved role and profile).</p>
+<form method="post" action="{% url 'career-clear' %}">{% csrf_token %}<button type="submit" class="secondary">Clear saved career context</button></form>
+</section>
+{% if band %}
+<section class="card stack"><h2>Compensation estimate</h2>
+<p>{{ band.count }} matching unique observations from {{ band.source_count }} source URLs. Exact role, location, level and currency; date-filtered.</p>
+{% if band.band %}<p>Observed range: {{ band.currency }} {{ band.band.low }}–{{ band.band.high }}; median {{ band.band.median }}. Not a representative market survey or guaranteed offer.</p>
+{% else %}<p>Insufficient evidence for a band: provide at least three unique observations across two source URLs.</p>{% endif %}
+<ul>{% for row in band.observations %}<li>{{ row.date|date:"Y-m-d" }} — {{ band.currency }} {{ row.annual_base }} — <a href="{{ row.source }}" rel="noopener noreferrer">Source</a></li>{% endfor %}</ul>
+{% if draft %}<label for="counter-script">Editable negotiation draft</label><textarea id="counter-script" rows="6">{{ draft }}</textarea><p>Review and send it yourself; no message is sent by this app.</p>{% endif %}
+</section>
+<section class="card stack"><h2>Skill-gap priorities</h2><p>Based on {{ posting_count }} distinct source URLs and exact confirmed skill names. The estimated match score is mean required-skill coverage across supplied postings, equally weighting each posting and its requirements. Each gain assumes you learn that skill alone; gains are not a prediction of the AI rank score, salary or hiring probability.</p>
+{% for gap in gaps %}<article><h3>{{ gap.skill }}</h3><p>Required by {{ gap.count }} of {{ gap.total }} supplied postings.</p><p>Estimated match gain: +{{ gap.match_gain|floatformat:1 }} percentage points ({{ gap.baseline_match|floatformat:1 }}% → {{ gap.estimated_match|floatformat:1 }}%).</p><ul>{% for posting in gap.postings %}<li><a href="{{ posting.source }}" rel="noopener noreferrer">{{ posting.role }}</a></li>{% endfor %}</ul><p>{{ gap.action }}</p><p>Milestone: {{ gap.milestone }}</p></article>
+{% empty %}<p>Insufficient repeated evidence for a priority skill gap. Add more sourced postings or review the confirmed profile.</p>{% endfor %}</section>
+{% endif %}
+{% endif %}
+{% endblock %}

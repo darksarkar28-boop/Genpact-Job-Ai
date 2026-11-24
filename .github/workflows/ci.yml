@@ -84,6 +84,9 @@ jobs:
               tests.test_router_integration tests.test_routed_workflows
               tests.test_public_research_provider tests.test_research_verification
               webapp.tests.PublicResearchTests webapp.tests.RoutedWorkbenchTests
+          - feature: "Issue 8 / compensation, skill gaps and timed interviews"
+            browser: true
+            suites: webapp.tests_career webapp.tests_interview webapp.browser_career
           - feature: "Issue 6 / application review and final download"
             browser: true
             suites: tests.test_ats_coverage webapp.tests_application webapp.browser_application

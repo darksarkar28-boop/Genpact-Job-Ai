@@ -1,0 +1,19 @@
+{% extends "webapp/base.html" %}
+{% block title %}Timed mock interviews{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Timed mock interviews</h1><p class="lead">Practice motivation, technical reasoning and behavioral answers, two minutes per question.</p></div></div>
+<section class="card stack">
+{% if profile and context.data.posting_description %}
+<h2>{{ context.data.role }} at {{ context.data.employer }}</h2>
+<p>Confirmed profile revision {{ profile.revision }} · {{ context.data.location }} · {{ context.data.level }}</p>
+<p class="preserve">{{ context.data.posting_description }}</p>
+{% if context.data.posting_source %}<a href="{{ context.data.posting_source }}" rel="noopener noreferrer">Candidate-supplied posting source</a>{% endif %}
+<p>Recordings are optional, stored privately on your account only after submission, and downloadable or deletable. Voice/video uses your browser microphone/camera and supports a typed transcript during practice or confirmed transcript review after the timed mock; no automated speech recognition or third-party transfer. Rubric scores measure transcript cues, not correctness or pronunciation. Text mode never requests device access. Up to ten interviews can be saved, with up to 8 MiB per answer (24 MiB per interview). Delete an old interview before starting another.</p>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button class="primary" type="submit">Start timed interview</button></form>
+{% else %}<p>Save a confirmed profile and target posting description in the career planner first.</p>{% endif %}
+<a href="{% url 'career-planning' %}">Back to compensation and skill planning</a>
+</section>
+<section class="card stack"><h2>Previous practice</h2>
+{% for attempt in attempts %}<article><a href="{% url 'interview-detail' attempt.pk %}">{{ attempt.context.role }} at {{ attempt.context.employer }} · {{ attempt.created_at }} · {% if attempt.completed %}Completed{% else %}In progress{% endif %}</a></article>{% empty %}<p>No interviews yet.</p>{% endfor %}
+</section>
+{% endblock %}
