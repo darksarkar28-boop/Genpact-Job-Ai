@@ -1,6 +1,6 @@
 {% extends "webapp/base.html" %}
 {% block title %}Create an account{% endblock %}
-{% block account_link %}<a href="{% url 'login' %}">Sign in</a>{% endblock %}
+{% block account_link %}<a href="{% url 'login' %}{% if next %}?next={{ next|urlencode }}{% endif %}">Sign in</a>{% endblock %}
 {% block content %}
 <div class="auth-layout">
   <section class="intro">
@@ -11,6 +11,7 @@
   <section class="card auth-card">
     <h2>Create an account</h2>
     <form method="post">{% csrf_token %}
+      {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
       {{ form.non_field_errors }}
       {% for field in form %}{% include "webapp/field.html" %}{% endfor %}
       <button type="submit" class="primary wide">Create account</button>

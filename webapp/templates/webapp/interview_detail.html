@@ -16,7 +16,7 @@
 <button type="button" id="record-stop" class="secondary" disabled>Stop recording</button>
 <button type="button" id="record-discard" class="secondary" disabled>Discard recording</button>
 <video id="record-preview" controls playsinline hidden></video>
-<p>Review your recording locally, then enter or edit a transcript for rubric feedback. Voice/video recording is optional; you can answer in text instead.</p>
+<p>Review your recording locally, then enter a transcript now or confirm it after the timed mock for rubric feedback. Voice/video recording is optional; you can answer in text instead.</p>
 </div>
 {% endif %}
 <button id="answer-submit" class="primary" type="submit">Submit answer / continue</button></form>
@@ -25,9 +25,11 @@
 {% else %}<section class="card"><h2>Interview complete</h2><p>Review your answer-by-answer feedback below.</p></section>{% endif %}
 <section class="card stack"><h2>Practice feedback</h2>
 <p>Heuristic transcript rubric, 0–5 per applicable dimension. It does not evaluate factual correctness or spoken fluency.</p>
-{% for answer in answers %}<article>
+{% for answer in answers %}<article id="answer-{{ answer.question_index }}">
 <h3>{{ answer.question }}</h3>
 {% if answer.timed_out %}<p>Time expired; answer not saved.</p>{% endif %}
+{% if answer.media_type and not answer.transcript %}<p>Recording saved; transcript confirmation pending. {% if not attempt.completed %}Finish the timed mock to review the transcript.{% endif %}</p>{% endif %}
+{% if answer.can_review %}<a href="{% url 'interview-transcript' attempt.pk answer.question_index %}">Review transcript for question {{ answer.question_index|add:1 }}</a>{% endif %}
 {% if answer.feedback and not answer.timed_out %}<p>Clarity: {{ answer.feedback.clarity|default_if_none:"Not scored" }} · Technical depth: {{ answer.feedback.technical_depth|default_if_none:"Not scored" }}</p>
 {% if answer.feedback.missing %}<p>Missing rubric points: {{ answer.feedback.missing|join:", " }}</p>{% endif %}<p>{{ answer.feedback.feedback }}</p><p>Answer excerpt: {{ answer.feedback.excerpt }}</p>{% endif %}
 {% if answer.transcript %}<details><summary>Saved transcript</summary><p class="preserve">{{ answer.transcript }}</p></details>

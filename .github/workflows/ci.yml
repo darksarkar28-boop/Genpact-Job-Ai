@@ -90,6 +90,10 @@ jobs:
           - feature: "Issue 6 / application review and final download"
             browser: true
             suites: tests.test_ats_coverage webapp.tests_application webapp.browser_application
+          - feature: "Issue 9 / licensed seats, cohort privacy and mentor review"
+            browser: true
+            file_database: true
+            suites: campus.tests campus.seat_concurrency campus.browser_review
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
@@ -108,6 +112,7 @@ jobs:
       - name: Run acceptance cases and publish evidence
         env:
           SUITES: ${{ matrix.suites }}
+          JOBWEB_TEST_DATABASE: ${{ matrix.file_database && format('{0}/campus-acceptance.sqlite3', runner.temp) || '' }}
         run: |
           read -r -a labels <<< "$SUITES"
           python manage.py test "${labels[@]}" --testrunner webapp.acceptance_runner.AcceptanceRunner --verbosity 2

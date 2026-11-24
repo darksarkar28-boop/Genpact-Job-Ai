@@ -43,6 +43,18 @@ class AnswerForm(forms.Form):
             self.fields.pop("recording", None)
 
 
+class TranscriptReviewForm(forms.Form):
+    transcript = forms.CharField(max_length=8000, widget=forms.Textarea(attrs={"rows": 10}),
+        label="Confirmed transcript of your recording")
+    confirm = forms.BooleanField(label="I confirm this transcript reflects my timed recording, without adding new answers.")
+
+    def clean_transcript(self):
+        value = self.cleaned_data["transcript"]
+        if not any(character.isalnum() for character in value):
+            raise forms.ValidationError("Enter a transcript containing words.")
+        return value
+
+
 def _allows_recording(attempt):
     return attempt.recording_consent and attempt.mode in ("voice", "video")
 
@@ -147,6 +159,7 @@ def _render(request, attempt, form=None, status=200):
     # Avoid loading the media binary into the result template.
     for answer in answers:
         answer.question = attempt.questions[answer.question_index]["text"]
+        answer.can_review = bool(attempt.completed and _allows_recording(attempt) and answer.media_type and not answer.timed_out)
     return render(request, "webapp/interview_detail.html", {"attempt": attempt,
         "question": question, "answers": answers, "form": form if form is not None else AnswerForm(initial={"index": attempt.question_index}, allow_recording=_allows_recording(attempt)),
         "allow_recording": _allows_recording(attempt),
@@ -188,7 +201,7 @@ def detail(request, pk):
         form.add_error("transcript", "Enter an answer or record one, or wait for the timer to expire.")
         return _render(request, attempt, form, 422)
     question = attempt.questions[attempt.question_index]
-    feedback = {} if expired else review_answer(question, transcript)
+    feedback = {} if expired or (recording and not transcript) else review_answer(question, transcript)
     next_index = attempt.question_index + 1
     try:
         with transaction.atomic():
@@ -203,6 +216,35 @@ def detail(request, pk):
     except IntegrityError:
         return HttpResponse("Question already submitted.", status=409)
     return redirect("interview-detail", pk=pk)
+
+
+@login_required
+@never_cache
+@sensitive_post_parameters()
+@require_http_methods(["GET", "POST"])
+def transcript_review(request, pk, index):
+    # Only review a preserved, consented timed recording after the timed mock ends.
+    answer = get_object_or_404(MockAnswer.objects.select_related("interview").defer("recording"),
+        interview_id=pk, interview__user=request.user, interview__completed=True,
+        interview__recording_consent=True, interview__mode__in=("voice", "video"),
+        question_index=index, timed_out=False)
+    if not answer.media_type:
+        raise Http404
+    question = answer.interview.questions[index]
+    form = TranscriptReviewForm(request.POST if request.method == "POST" else None,
+                                initial={"transcript": answer.transcript})
+    if request.method == "POST" and form.is_valid():
+        transcript = form.cleaned_data["transcript"]
+        feedback = review_answer(question, transcript)
+        updated = MockAnswer.objects.filter(pk=answer.pk, interview__user=request.user,
+            timed_out=False, media_type=answer.media_type, transcript=answer.transcript).update(
+                transcript=transcript, feedback=feedback)
+        if not updated:
+            return HttpResponse("Recording or transcript changed; reload before reviewing.", status=409)
+        return redirect("interview-detail", pk=pk)
+    return render(request, "webapp/interview_transcript.html",
+        {"attempt": answer.interview, "answer": answer, "question": question, "form": form},
+        status=422 if request.method == "POST" else 200)
 
 
 @login_required

@@ -27,7 +27,11 @@ two-minute deadlines. Text works without a microphone. Voice/video uses browser
 MediaRecorder on HTTPS or localhost, with explicit consent and manual review.
 Enter or edit a transcript for heuristic clarity and technical depth feedback.
 No automated speech-to-text, external media processor or claim of expert scoring.
-Recording without a transcript is allowed but not scored. Unsupported browsers
+Record without typing during the timer, finish the mock, then open Review transcript
+for the recorded question. Download/listen to the unchanged recording, enter and
+confirm its transcript, and receive the same rubric and missing-point feedback.
+This is manual review; it does not independently verify transcript fidelity.
+Expired or deleted recordings cannot be reviewed. Unsupported browsers
 can use the text fallback. Recording size is limited to 8 MiB per answer (24 MiB per attempt), and each
 account can retain at most ten attempts (240 MiB of recording payloads). Delete
 an old attempt before starting another. This is a bounded database-storage
