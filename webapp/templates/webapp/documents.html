@@ -132,6 +132,73 @@
     </section>
   {% endif %}
 
+  <section class="card" aria-labelledby="release-review-heading">
+    <div class="section-heading">
+      <div>
+        <h2 id="release-review-heading">Review & unlock final downloads</h2>
+        <p class="hint">Draft previews stay available. Final PDF/DOCX downloads unlock only after the exact generated artifacts pass the factual and ATS review.</p>
+      </div>
+    </div>
+    {% if release_report %}
+      {% if release_report.allowed %}
+        <p class="notice">Review passed.</p>
+      {% else %}
+        <div class="notice error" role="alert">
+          <strong>Review blocked final download.</strong>
+          {% for error in release_report.errors %}<div>{{ error }}</div>{% endfor %}
+        </div>
+      {% endif %}
+    {% endif %}
+    {% if successful_cvs %}
+      <form action="{% url 'document_release_review' %}" method="post">
+        {% csrf_token %}
+        <div class="fields">
+          <div class="field">
+            <label for="cv_job_id">Generated CV</label>
+            <select id="cv_job_id" name="cv_job_id" required>
+              {% for job in successful_cvs %}
+                <option value="{{ job.pk }}" {% if release_form_data.cv_job_id == job.pk|stringformat:"s" %}selected{% endif %}>#{{ job.pk }} · {{ job.template_key|title }} · {{ job.output_format|upper }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="cover_job_id">Generated cover letter (optional)</label>
+            <select id="cover_job_id" name="cover_job_id">
+              <option value="">No cover letter</option>
+              {% for job in successful_covers %}
+                <option value="{{ job.pk }}" {% if release_form_data.cover_job_id == job.pk|stringformat:"s" %}selected{% endif %}>#{{ job.pk }} · {{ job.template_key|title }} · {{ job.output_format|upper }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="release_employer">Target employer</label>
+          <input id="release_employer" name="employer" maxlength="200" value="{{ release_form_data.employer|default:'' }}">
+        </div>
+        <div class="field">
+          <label for="release_headings">CV section headings in visible order</label>
+          <textarea id="release_headings" name="visual_headings" rows="4">{{ release_form_data.visual_headings|default:"Summary
+Skills
+Experience
+Education" }}</textarea>
+        </div>
+        <div class="field">
+          <label for="release_keywords">Posting keywords (JSON)</label>
+          <textarea id="release_keywords" name="keywords" rows="4">{{ release_form_data.keywords|default:'{"keywords":[{"term":"Python","priority":"required"}]}' }}</textarea>
+        </div>
+        <details>
+          <summary>Optional factual evidence</summary>
+          <div class="field"><label for="release_claims">Candidate claims (JSON)</label><textarea id="release_claims" name="claims" rows="3">{{ release_form_data.claims|default:"[]" }}</textarea></div>
+          <div class="field"><label for="release_citations">Company citations (JSON)</label><textarea id="release_citations" name="company_citations" rows="3">{{ release_form_data.company_citations|default:"[]" }}</textarea></div>
+        </details>
+        <label><input type="checkbox" name="confirm_visual" {% if release_form_data.confirm_visual == "on" %}checked{% endif %} required> I visually reviewed these generated files and their reading order.</label>
+        <p><button class="primary" type="submit">Run final review & unlock exact files</button></p>
+      </form>
+    {% else %}
+      <p class="hint">Compile a CV first. Source previews remain available while no final artifact is approved.</p>
+    {% endif %}
+  </section>
+
   <section class="jobs-section">
     <div class="section-heading"><h2>Recent drafts</h2><span class="hint">Newest first</span></div>
     <p>When your CV and cover letter are ready, <a href="{% url 'application_review' %}">review the final PDFs</a> for ATS coverage and factual accuracy.</p>
@@ -151,7 +218,11 @@
           <span class="status status-{{ job.status }}">{{ job.get_status_display }}</span>
           {% if job.status == "succeeded" %}
             {% if job.output_format == "pdf" %}<a class="secondary" href="{% url 'document_download' job.pk %}?preview=1" target="_blank" rel="noopener">Preview draft PDF</a>{% endif %}
-            <a class="primary" href="{% url 'document_download' job.pk %}">Download draft</a>
+            {% if job.release_approved %}
+              <a class="primary" href="{% url 'document_download' job.pk %}">Download approved {{ job.output_format|upper }}</a>
+            {% else %}
+              <span class="hint">Final download locked · run application review</span>
+            {% endif %}
           {% elif job.status == "failed" %}
             <form action="{% url 'document_retry' job.pk %}" method="post">{% csrf_token %}<button class="secondary" type="submit">Retry</button></form>
           {% endif %}
