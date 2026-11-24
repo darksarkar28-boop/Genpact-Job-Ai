@@ -76,7 +76,7 @@ jobs:
         include:
           - feature: "Issue 1 / profile import and returning sign-in"
             browser: true
-            suites: webapp.tests.OnboardingTests webapp.browser_smoke
+            suites: webapp.tests.OnboardingTests webapp.browser_smoke.BrowserOnboarding
           - feature: "Issue 3 / model routing and shared research"
             browser: false
             suites: >-
@@ -84,6 +84,13 @@ jobs:
               tests.test_router_integration tests.test_routed_workflows
               tests.test_public_research_provider tests.test_research_verification
               webapp.tests.PublicResearchTests webapp.tests.RoutedWorkbenchTests
+          - feature: "Issue 5 / board history and two live sessions"
+            browser: true
+            suites: webapp.test_board webapp.browser_smoke.BrowserBoard
+          - feature: "Issue 5 / Gmail and Outlook connections"
+            browser: true
+            # Backend provider fixtures and browser acceptance belong to this issue's gate.
+            suites: webapp.test_mailbox webapp.browser_mailbox
           - feature: "Issue 6 / application review and final download"
             browser: true
             suites: tests.test_ats_coverage webapp.tests_application webapp.browser_application
@@ -110,6 +117,10 @@ jobs:
         env:
           SUITES: ${{ matrix.suites }}
           JOBWEB_TEST_DATABASE: ${{ matrix.file_database && format('{0}/campus-acceptance.sqlite3', runner.temp) || '' }}
+          JOBWEB_GOOGLE_CLIENT_ID: fixture-google-client
+          JOBWEB_GOOGLE_CLIENT_SECRET: fixture-google-secret
+          JOBWEB_MICROSOFT_CLIENT_ID: fixture-microsoft-client
+          JOBWEB_MICROSOFT_CLIENT_SECRET: fixture-microsoft-secret
         run: |
           read -r -a labels <<< "$SUITES"
           python manage.py test "${labels[@]}" --testrunner webapp.acceptance_runner.AcceptanceRunner --verbosity 2

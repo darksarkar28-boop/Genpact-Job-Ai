@@ -1,0 +1,167 @@
+{% extends "webapp/base.html" %}
+{% block title %}Applications{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="kicker">Application tracker</p>
+    <h1>Your applications</h1>
+    <p class="lead">Move applications between stages. Every move is saved with a timestamp and appears in your other open sessions.</p>
+  </div>
+</div>
+<section class="card mail-accounts" aria-labelledby="mail-accounts-title">
+  <h2 id="mail-accounts-title">Email connections</h2>
+  <p class="hint">Read-only mailbox access. Status changes are proposed for your approval, never applied automatically.</p>
+  <div class="mail-accounts-grid">
+    <div>
+      <h3>Gmail</h3>
+      {% if mail_connections.google %}
+        <p class="hint">Connected{% if mail_connections.google.needs_reconnect %} — reconnect needed{% endif %}</p>
+        <form method="post" action="{% url 'mailbox_sync' 'google' %}">{% csrf_token %}<button type="submit" class="primary">Sync Gmail</button></form>
+        <form method="post" action="{% url 'mailbox_disconnect' 'google' %}">{% csrf_token %}<button type="submit" class="secondary">Disconnect Gmail</button></form>
+        <form method="post" action="{% url 'mailbox_connect' 'google' %}">{% csrf_token %}<button type="submit" class="secondary">Reconnect Gmail</button></form>
+      {% elif google_configured %}
+        <form method="post" action="{% url 'mailbox_connect' 'google' %}">{% csrf_token %}<button type="submit" class="primary">Connect Gmail</button></form>
+      {% else %}<p class="hint">Gmail integration requires administrator configuration.</p>{% endif %}
+    </div>
+    <div>
+      <h3>Outlook</h3>
+      {% if mail_connections.microsoft %}
+        <p class="hint">Connected{% if mail_connections.microsoft.needs_reconnect %} — reconnect needed{% endif %}</p>
+        <form method="post" action="{% url 'mailbox_sync' 'microsoft' %}">{% csrf_token %}<button type="submit" class="primary">Sync Outlook</button></form>
+        <form method="post" action="{% url 'mailbox_disconnect' 'microsoft' %}">{% csrf_token %}<button type="submit" class="secondary">Disconnect Outlook</button></form>
+        <form method="post" action="{% url 'mailbox_connect' 'microsoft' %}">{% csrf_token %}<button type="submit" class="secondary">Reconnect Outlook</button></form>
+      {% elif microsoft_configured %}
+        <form method="post" action="{% url 'mailbox_connect' 'microsoft' %}">{% csrf_token %}<button type="submit" class="primary">Connect Outlook</button></form>
+      {% else %}<p class="hint">Outlook integration requires administrator configuration.</p>{% endif %}
+    </div>
+  </div>
+</section>
+<section class="card mailbox-review" aria-labelledby="mail-review-title">
+  <h2 id="mail-review-title">Mailbox suggestions</h2>
+  <p class="hint">Each proposed stage change is held until you approve it. Offers never mean you accepted a job.</p>
+  {% for signal in mail_signals %}
+    <article class="mail-signal">
+      <h3>{{ signal.subject|default:"Message without subject" }}</h3>
+      <p class="hint">{{ signal.get_state_display }} · {{ signal.connection.get_provider_display }} · {{ signal.sender }}</p>
+      {% if signal.application %}<p>{{ signal.application.company }} · {{ signal.application.role }}</p>{% endif %}
+      <p>{{ signal.reason }}</p>
+      {% if signal.proposed_status %}<p><strong>Proposed stage:</strong> {{ signal.proposed_status }}</p>{% endif %}
+      {% if signal.received_at %}<p class="hint">Received {{ signal.received_at|date:"M j, Y H:i" }} UTC</p>{% endif %}
+      {% if signal.source_link %}<a href="{{ signal.source_link }}" target="_blank" rel="noopener noreferrer">Open source email</a>{% endif %}
+      {% if signal.state == 'pending' or signal.state == 'needs_review' %}
+        <form method="post" action="{% url 'mailbox_decide' signal.pk %}" class="mail-decisions">
+          {% csrf_token %}
+          {% if signal.state == 'pending' %}<button class="primary" type="submit" name="action" value="approve">Approve change</button>{% endif %}
+          {% if signal.state == 'needs_review' %}
+            <div class="mail-resolve-fields">
+              <label for="mail-app-{{ signal.pk }}">Application for this email</label>
+              <select id="mail-app-{{ signal.pk }}" name="application_choice">
+                <option value="">Choose application</option>
+                {% for app in resolution_applications %}
+                  <option value="{{ app.pk }}:{{ app.version }}">
+                    {{ app.company }} — {{ app.role }} ({{ app.get_status_display }})
+                  </option>
+                {% endfor %}
+              </select>
+              <label for="mail-stage-{{ signal.pk }}">Intended stage</label>
+              <select id="mail-stage-{{ signal.pk }}" name="status">
+                <option value="">Choose stage</option>
+                {% for value, label in statuses %}
+                  <option value="{{ value }}">{{ label }}</option>
+                {% endfor %}
+              </select>
+              <label class="board-confirm">
+                <input type="checkbox" name="confirm_resolution" value="yes">
+                I reviewed the source email and confirm the selected application and stage.
+              </label>
+              <label class="board-confirm">
+                <input type="checkbox" name="confirm_offer_decision" value="yes">
+                For Hired or Offer declined: I personally accept or decline this offer.
+              </label>
+            </div>
+            <button class="primary" type="submit" name="action" value="resolve">Resolve manually</button>
+          {% endif %}
+          <button class="secondary" type="submit" name="action" value="dismiss">Dismiss</button>
+        </form>
+      {% endif %}
+    </article>
+  {% empty %}
+    <p class="hint">No messages to review. Connect an account and press Sync.</p>
+  {% endfor %}
+</section>
+<section class="card board-create" aria-labelledby="board-create-title">
+  <h2 id="board-create-title">Add application</h2>
+  <form method="post" action="{% url 'application_create' %}" class="board-create-form">
+    {% csrf_token %}
+    {% if form.non_field_errors %}{{ form.non_field_errors }}{% endif %}
+    {% for field in form %}
+      <div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
+        {% if field.errors %}{{ field.errors }}{% endif %}
+      </div>
+    {% endfor %}
+    <button type="submit" class="primary">Add to board</button>
+  </form>
+</section>
+<section class="card board-import" aria-labelledby="board-import-title">
+  <h2 id="board-import-title">Already tracking applications in the CLI?</h2>
+  <p class="hint">Import your existing tracker CSV. Reimporting preserves edits and skips duplicate source rows.</p>
+  <form method="post" action="{% url 'application_import' %}" enctype="multipart/form-data" class="board-import-form">
+    {% csrf_token %}
+    {{ tracker_import_form.tracker_csv.label_tag }}
+    {{ tracker_import_form.tracker_csv }}
+    <button class="secondary" type="submit">Import tracker</button>
+  </form>
+</section>
+<div id="application-board" data-revision="{{ revision }}" data-revision-url="{% url 'application_board_revision' %}">
+  <p class="hint board-live" role="status">Changes from your other sessions appear automatically while this page is idle.</p>
+  <div class="board-columns" aria-label="Application status columns">
+    {% for value, label in statuses %}
+    <section class="board-column" aria-label="{{ label }}">
+      <h2>{{ label }}</h2>
+      {% for app in applications %}
+        {% if app.status == value %}
+        <article class="board-card">
+          <h3>{{ app.role }}</h3>
+          <p class="board-company">{{ app.company }}</p>
+          {% if app.source_url %}<a href="{{ app.source_url }}" target="_blank" rel="noopener noreferrer">Job posting</a>{% endif %}
+          <p class="hint">Updated {{ app.updated_at|date:"M j, Y H:i" }} UTC</p>
+          {% if app.tracker_date %}<p class="hint">Tracker date {{ app.tracker_date|date:"M j, Y" }}</p>{% endif %}
+          <form method="post" action="{% url 'application_move' app.pk %}" class="board-move-form">
+            {% csrf_token %}
+            <input type="hidden" name="version" value="{{ app.version }}">
+            <label for="stage-{{ app.pk }}">Move to stage</label>
+            <select id="stage-{{ app.pk }}" name="status">
+              {% for stage, stage_label in statuses %}
+                <option value="{{ stage }}" {% if app.status == stage %}selected{% endif %}>{{ stage_label }}</option>
+              {% endfor %}
+            </select>
+            <label class="board-confirm">
+              <input type="checkbox" name="confirm_offer_decision" value="yes">
+              I confirm that I personally accepted or declined the offer if selecting Hired or Offer declined.
+            </label>
+            <button type="submit" class="secondary">Save change</button>
+          </form>
+          <details class="board-history"><summary>History</summary>
+            <ol>
+              {% for event in app.events.all %}
+                <li><time datetime="{{ event.created_at|date:'c' }}">{{ event.created_at|date:"M j, Y H:i" }} UTC</time>:
+                  {% if event.before %}{{ event.before }} → {% endif %}{{ event.get_after_display }}
+                  ({{ event.origin }})
+                  {% if event.source_message_link %}
+                    <a href="{{ event.source_message_link }}" target="_blank" rel="noopener noreferrer">Source email</a>
+                  {% elif event.mail_signal and event.mail_signal.source_link %}
+                    <a href="{{ event.mail_signal.source_link }}" target="_blank" rel="noopener noreferrer">Source email</a>
+                  {% endif %}
+                  {% if event.source_message_id %}<span class="hint">Email ref: {{ event.source_message_id|truncatechars:32 }}</span>{% endif %}
+                </li>
+              {% endfor %}
+            </ol>
+          </details>
+        </article>
+        {% endif %}
+      {% endfor %}
+    </section>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
