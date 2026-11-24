@@ -73,3 +73,10 @@ if not DEBUG and os.environ.get("JOBWEB_TRUST_PROXY_TLS") == "1":
 SECURE_REFERRER_POLICY = "same-origin"
 DATA_UPLOAD_MAX_NUMBER_FILES = 1
 FILE_UPLOAD_MAX_MEMORY_SIZE = 512 * 1024
+
+# Model telemetry contains only configured route labels, usage counts and estimated cost.
+LOGGING = {
+    "version": 1, "disable_existing_loggers": False,
+    "handlers": {"model_usage": {"class": "logging.StreamHandler"}},
+    "loggers": {"jobai.model_usage": {"handlers": ["model_usage"], "level": "INFO", "propagate": False}},
+}
