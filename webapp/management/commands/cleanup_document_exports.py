@@ -5,7 +5,7 @@ from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
-from webapp.documents import artifact_file
+from webapp.documents import artifact_file, review_pdf_file
 from webapp.models import DocumentJob
 
 
@@ -33,6 +33,9 @@ class Command(BaseCommand):
                 self.stdout.write(f"would clean job {job.pk}: {job.artifact_name}")
                 cleaned += 1
                 continue
+            proof = review_pdf_file(job)
+            if proof and proof != path:
+                proof.unlink(missing_ok=True)
             if path:
                 path.unlink(missing_ok=True)
                 parent = path.parent
@@ -45,6 +48,8 @@ class Command(BaseCommand):
                 except OSError:
                     pass
             verification = dict(job.verification or {})
+            verification.pop("release_approval", None)
+            verification.pop("review_pdf_name", None)
             verification["artifact_cleaned_at"] = timezone.now().isoformat()
             job.artifact_name = ""
             job.artifact_sha256 = ""
