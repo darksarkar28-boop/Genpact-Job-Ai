@@ -12,7 +12,7 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 from django.conf import settings
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from pypdf import PdfReader
 
@@ -84,29 +84,28 @@ def queue_document_job(user, profile: Profile, payload: dict):
         json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()
 
-    existing = (
-        DocumentJob.objects.filter(user=user, fingerprint=fingerprint)
-        .exclude(status=DocumentJob.Status.FAILED)
-        .order_by("-created_at")
-        .first()
-    )
+    existing = DocumentJob.objects.filter(user=user, fingerprint=fingerprint).first()
     if existing:
-        if existing.status != DocumentJob.Status.SUCCEEDED or artifact_file(existing):
-            return existing, False
-        existing.status = DocumentJob.Status.FAILED
-        existing.error = "The previous artifact is no longer available. Retry the export."
-        existing.finished_at = timezone.now()
-        existing.save(update_fields=["status", "error", "finished_at", "updated_at"])
+        if existing.status == DocumentJob.Status.SUCCEEDED and not artifact_file(existing):
+            existing.status = DocumentJob.Status.FAILED
+            existing.error = "The previous artifact is no longer available. Retry the export."
+            existing.finished_at = timezone.now()
+            existing.save(update_fields=["status", "error", "finished_at", "updated_at"])
+        return existing, False
 
-    return DocumentJob.objects.create(
-        user=user,
-        profile_revision=profile.revision,
-        document_type=document_type,
-        output_format=output_format,
-        template_key=template_key,
-        fingerprint=fingerprint,
-        content_snapshot=snapshot,
-    ), True
+    try:
+        return DocumentJob.objects.create(
+            user=user,
+            profile_revision=profile.revision,
+            document_type=document_type,
+            output_format=output_format,
+            template_key=template_key,
+            fingerprint=fingerprint,
+            content_snapshot=snapshot,
+        ), True
+    except IntegrityError:
+        # A concurrent identical request won the unique (user, fingerprint) race.
+        return DocumentJob.objects.get(user=user, fingerprint=fingerprint), False
 
 
 def retry_document_job(job: DocumentJob):
