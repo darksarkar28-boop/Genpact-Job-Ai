@@ -338,7 +338,7 @@ class ManualResolutionTests(TestCase):
     def email(self, mid, subject):
         return {
             "id": mid, "subject": subject,
-            "sender": "recruiter@examplelabs.com",
+            "sender": "hr@uniquevisionlabs.com" if "Unique Vision Labs" in subject else "recruiter@examplelabs.com",
             "body": "Please review your job application and interview invitation.",
             "link": "https://mail.google.com/mail/u/0/#all/" + mid,
             "received_at": timezone.now(),

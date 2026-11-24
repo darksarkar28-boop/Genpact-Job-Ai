@@ -1,5 +1,5 @@
 from django.contrib.auth import views as auth
-from django.urls import path
+from django.urls import include, path
 
 from . import board, mailbox, routed_views, views
 
@@ -9,6 +9,7 @@ urlpatterns = [
     path("accounts/login/", auth.LoginView.as_view(template_name="webapp/login.html"), name="login"),
     path("accounts/logout/", auth.LogoutView.as_view(), name="logout"),
     path("workbench/", routed_views.workbench, name="workbench"),
+    path("campus/", include("campus.urls")),
     path("profile/", views.workspace, name="workspace"),
     path("applications/", board.application_board, name="application_board"),
     path("applications/mail/<str:provider>/connect/", mailbox.connect, name="mailbox_connect"),

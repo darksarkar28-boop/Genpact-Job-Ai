@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "webapp",
+    "campus",
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -53,6 +54,18 @@ DATABASES = {"default": {
     "NAME": DATA_DIR / "profiles.sqlite3",
     "OPTIONS": {"timeout": 10},
 }}
+if os.environ.get("JOBWEB_TEST_DATABASE"):
+    DATABASES["default"]["TEST"] = {"NAME": os.environ["JOBWEB_TEST_DATABASE"]}
+
+CAMPUS_MAIL_ENABLED = bool(os.environ.get("CAMPUS_SMTP_HOST"))
+if CAMPUS_MAIL_ENABLED:
+    EMAIL_HOST = os.environ["CAMPUS_SMTP_HOST"]
+    EMAIL_PORT = int(os.environ.get("CAMPUS_SMTP_PORT", "587"))
+    EMAIL_HOST_USER = os.environ.get("CAMPUS_SMTP_USER", "")
+    EMAIL_HOST_PASSWORD = os.environ.get("CAMPUS_SMTP_PASSWORD", "")
+    EMAIL_USE_TLS = os.environ.get("CAMPUS_SMTP_TLS", "1") == "1"
+    EMAIL_TIMEOUT = 10
+    DEFAULT_FROM_EMAIL = os.environ.get("CAMPUS_FROM_EMAIL", "campus@localhost")
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

@@ -96,6 +96,22 @@ For a single-host production deployment, mount that directory on a persistent vo
 
 Run the onboarding tests with `python manage.py test webapp`. To reproduce the timed desktop and mobile browser checks, install `playwright`, run `python -m playwright install chromium`, then run `python manage.py test webapp.browser_smoke`.
 
+### Campus and bootcamp portal
+
+An operator can provision a license for an existing account after migration.
+
+```sh
+python manage.py provision_campus --slug placement --name "Placement Office" --seats 100 --admin placement_admin
+```
+
+The admin opens **Campus**, creates cohorts and issues private invitations in batches of up to 50. Send each recipient their individual link. To enable the **Send invitations by email** option, set `CAMPUS_SMTP_HOST`, `CAMPUS_FROM_EMAIL`, and, when required, `CAMPUS_SMTP_USER` and `CAMPUS_SMTP_PASSWORD`. STARTTLS on port 587 is the default. Use `CAMPUS_SMTP_PORT` and `CAMPUS_SMTP_TLS` for your provider. Use a stable `JOBWEB_SECRET_KEY` across worker processes and restarts. Treat invitation URLs as credentials and redact the `/campus/invite/` path from access logs. A recipient signs in or creates an account and explicitly accepts. A reserved seat expires after seven days.
+
+Active candidates and outstanding candidate invitations occupy licensed seats. Staff accounts do not consume seats. Deactivate a candidate or revoke an invitation to reassign capacity. Rerun the provisioning command to change the license. Its limit cannot go below existing allocations.
+
+The dashboard counts distinct active candidates in the selected cohorts. Onboarding uses confirmed profile completion. Applications, interviews and offers use the candidate’s own reported counts, with reporting coverage shown separately. A candidate can share PDF or DOCX revisions up to 4 MiB and withdraw access. Moving a candidate to another cohort ends the existing share. Mentors can read and comment on the revisions explicitly shared with their assigned cohorts. Organization admins see the roster, aggregate progress and access history. Private document bytes and revision comments live in the persistent application database.
+
+The **Issue 9 / licensed seats, cohort privacy and mentor review** GitHub Actions job runs the browser workflow, cross-organization checks and a concurrent last-seat test on a file-backed SQLite database.
+
 ## Quick start
 
 > 🎥 **Prefer to see it in action first?** [The Next New Thing did a hands-on walkthrough](https://www.youtube.com/watch?v=HoVxjMNFYv4) of how the workflow is actually used, from setup to a finished application (recorded August 2026 - commands may have evolved since).

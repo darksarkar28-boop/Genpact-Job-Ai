@@ -6,6 +6,7 @@
   <meta name="color-scheme" content="light">
   <title>{% block title %}Master profile{% endblock %} · Genpact Job AI</title>
   <link href="{% static 'webapp/app.css' %}" rel="stylesheet">
+  {% block extra_styles %}{% endblock %}
   <script src="{% static 'webapp/editor.js' %}" defer></script>
   <script src="{% static 'webapp/board.js' %}" defer></script>
 </head>
@@ -19,6 +20,7 @@
         <a href="{% url 'workspace' %}">Master profile</a>
         <a href="{% url 'application_board' %}">Applications</a>
         <a href="{% url 'workbench' %}">AI workbench</a>
+        <a href="{% url 'campus:home' %}">Campus</a>
         <form action="{% url 'logout' %}" method="post">{% csrf_token %}<button class="link" type="submit">Sign out</button></form>
       {% else %}{% block account_link %}{% endblock %}{% endif %}
     </div>
