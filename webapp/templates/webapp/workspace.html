@@ -6,7 +6,7 @@
       {% if profile.data.headline %}<p class="lead">{{ profile.data.headline }}</p>{% endif %}
       <div class="meta">{% if profile.data.email %}<span>{{ profile.data.email }}</span>{% endif %}{% if profile.data.phone %}<span>{{ profile.data.phone }}</span>{% endif %}{% if profile.data.location %}<span>{{ profile.data.location }}</span>{% endif %}</div>
     </div>
-    <a class="secondary" href="{% url 'edit' %}">Edit profile</a>
+    <div class="profile-actions"><a class="primary" href="{% url 'documents' %}">Create PDF / DOCX</a><a class="secondary" href="{% url 'edit' %}">Edit profile</a></div>
   </div>
   <div class="workspace-grid">
     <div class="card stack">
