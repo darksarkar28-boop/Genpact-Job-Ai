@@ -12,7 +12,8 @@ from pathlib import Path
 from xml.etree import ElementTree
 
 from django.conf import settings
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
+from django.db.models import F
 from django.utils import timezone
 from pypdf import PdfReader
 
@@ -126,22 +127,34 @@ def retry_document_job(job: DocumentJob):
 
 
 def claim_next_job():
-    with transaction.atomic():
-        job = (
-            DocumentJob.objects.select_for_update()
-            .filter(status=DocumentJob.Status.QUEUED)
+    """Atomically claim one job even when the deployment uses SQLite.
+
+    SQLite ignores SELECT ... FOR UPDATE, so use a compare-and-swap UPDATE on
+    the queued status. Multiple workers may observe the same candidate, but
+    only one can transition it from queued to running.
+    """
+    while True:
+        candidate = (
+            DocumentJob.objects.filter(status=DocumentJob.Status.QUEUED)
             .order_by("created_at", "pk")
+            .values("pk")
             .first()
         )
-        if not job:
+        if not candidate:
             return None
-        job.status = DocumentJob.Status.RUNNING
-        job.attempt += 1
-        job.started_at = timezone.now()
-        job.finished_at = None
-        job.error = ""
-        job.save(update_fields=["status", "attempt", "started_at", "finished_at", "error", "updated_at"])
-        return job
+        now = timezone.now()
+        claimed = DocumentJob.objects.filter(
+            pk=candidate["pk"], status=DocumentJob.Status.QUEUED
+        ).update(
+            status=DocumentJob.Status.RUNNING,
+            attempt=F("attempt") + 1,
+            started_at=now,
+            finished_at=None,
+            error="",
+            updated_at=now,
+        )
+        if claimed:
+            return DocumentJob.objects.get(pk=candidate["pk"])
 
 
 def artifact_file(job: DocumentJob):
