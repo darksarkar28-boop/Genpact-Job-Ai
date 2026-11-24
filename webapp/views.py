@@ -205,6 +205,7 @@ def application_review(request):
                 if cover_data:
                     archive.writestr("validated_cover_letter.pdf", cover_data)
                 public_report = {"allowed": True, "coverage": report.get("coverage"),
+                                 "verified_sources": report.get("verified_sources", []),
                                  "pdf_sha256": report.get("pdf_sha256"),
                                  "note": report.get("note")}
                 archive.writestr("verification_report.json", json.dumps(public_report, ensure_ascii=False, indent=2))
