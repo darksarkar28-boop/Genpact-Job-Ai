@@ -160,6 +160,7 @@ def candidate_findings(document, profile, claim_list, externally_verified=""):
         if isinstance(row, dict) and isinstance(row.get("title"), str) and row["title"].strip()
     }
     titles = {title for title, _ in positions}
+    confirmed_degrees = {normalized(degree) for degree in _profile_fields(profile, "degree")}
     known_degree_labels = {
         normalized(match.group(0))
         for degree in _profile_fields(profile, "degree")
@@ -178,14 +179,27 @@ def candidate_findings(document, profile, claim_list, externally_verified=""):
         elif heading in OTHER_HEADINGS:
             in_experience = False
             continue
-        if DEGREE.search(line):
-            # One genuine degree must not mask an additional invented degree
-            # appearing on the same extracted line.
-            if not any(has_term(normalized(line), degree) for degree in _profile_fields(profile, "degree")):
-                findings.append("Unsupported degree/course in: " + line[:100])
-            for degree_token in DEGREE.finditer(line):
-                if normalized(degree_token.group(0)) not in known_degree_labels:
-                    findings.append("Unsupported degree credential: " + degree_token.group(0) + " in " + line[:100])
+        degree_tokens = list(DEGREE.finditer(line))
+        for index, degree_token in enumerate(degree_tokens):
+            # Match the *whole qualification* against one saved degree record.
+            # Looking only at BSc/PhD prefixes allows `BSc Computer Science,
+            # BSc Physics` when the candidate confirmed only the former.
+            end = degree_tokens[index + 1].start() if index + 1 < len(degree_tokens) else len(line)
+            qualification = line[degree_token.start():end]
+            # School, dates and punctuation are presentation metadata, not
+            # part of the qualification. Another degree token always creates
+            # another claim, even when it has the same credential prefix.
+            qualification = re.split(
+                r"\s*(?:[,;|•]|\s+[—–]\s+)\s*|\s+(?:at|from)\s+",
+                qualification, maxsplit=1, flags=re.I,
+            )[0]
+            qualification = re.sub(r"\s*\(\s*(?:19|20)\d{2}[^)]*\)\s*$", "", qualification)
+            qualification = re.sub(r"\s+(?:19|20)\d{2}\s*[-–]\s*(?:19|20)\d{2}\s*$", "", qualification)
+            qualification = re.sub(r"\s+(?:and|&)\s*$", "", qualification, flags=re.I).strip(" -–—()[]{},;|•/")
+            if normalized(qualification) not in confirmed_degrees:
+                kind = ("Unsupported degree credential" if normalized(degree_token.group(0))
+                        not in known_degree_labels else "Unsupported degree/course")
+                findings.append(f"{kind}: {qualification[:120]}")
         position_error = _position_finding(line, in_experience, titles, positions)
         if position_error:
             findings.append(position_error)

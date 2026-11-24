@@ -228,6 +228,49 @@ class BackendReviewTests(TestCase):
         self.assertContains(result, "Unsupported degree credential: PhD", status_code=422)
         self.assertFalse(result.context["token"])
 
+    def test_unconfirmed_second_bsc_blocks_review_and_release(self):
+        # Regression from the hosted failure on febefe2: the degree prefix
+        # BSc is genuine, but Physics is not in this candidate's profile.
+        lines = [line.replace("BSc Computer Science", "BSc Computer Science, BSc Physics")
+                 for line in CV_LINES]
+        review = self.client.post(reverse("application_review"), self.post_data(lines=lines))
+        self.assertEqual(review.status_code, 422)
+        self.assertContains(review, "Unsupported degree/course: BSc Physics", status_code=422)
+        self.assertFalse(review.context["report"]["allowed"])
+        self.assertFalse(review.context["token"])
+
+        attempted_release = self.client.post(reverse("application_review"),
+            self.post_data(lines=lines, action="export"))
+        self.assertEqual(attempted_release.status_code, 422)
+        self.assertContains(attempted_release, "Export denied", status_code=422)
+        self.assertNotEqual(attempted_release.get("Content-Type"), "application/zip")
+
+    def test_two_distinct_confirmed_bsc_degrees_can_be_exported(self):
+        saved = Profile.objects.get(user=self.user)
+        saved.data["education"].append({
+            "degree": "BSc Physics", "school": "Second University", "dates": "2019 - 2024",
+        })
+        saved.save(update_fields=["data"])
+        lines = [line.replace("BSc Computer Science", "BSc Computer Science, BSc Physics")
+                 for line in CV_LINES]
+        final_pdf = pdf(lines)
+
+        def request_data(action="review", token=""):
+            return self.post_data(action=action, token=token, extra={
+                "cv_pdf": SimpleUploadedFile("confirmed.pdf", final_pdf, content_type="application/pdf"),
+            })
+
+        review = self.client.post(reverse("application_review"), request_data())
+        self.assertEqual(review.status_code, 200, review.content[:300])
+        self.assertTrue(review.context["report"]["allowed"])
+        token = review.context["token"]
+        self.assertTrue(token)
+        released = self.client.post(reverse("application_review"), request_data("export", token))
+        self.assertEqual(released.status_code, 200)
+        self.assertEqual(released["Content-Type"], "application/zip")
+        with zipfile.ZipFile(io.BytesIO(released.content)) as archive:
+            self.assertEqual(archive.read("validated_cv.pdf"), final_pdf)
+
     def test_supported_label_and_narrative_are_preserved(self):
         lines = [*CV_LINES[:4], "I built reporting tools at Example Labs.", *CV_LINES[4:],
                  "Position: data engineer at Example Labs"]
