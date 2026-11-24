@@ -1,0 +1,11 @@
+<form method="post" action="{% url 'import' %}" enctype="multipart/form-data" class="upload-form">
+  {% csrf_token %}
+  {{ upload.non_field_errors }}
+  <div class="file-box">
+    {{ upload.document.label_tag }}
+    <p class="hint" id="file-types">Choose a text PDF, Word DOCX or LinkedIn data-export ZIP, up to 8 MiB.</p>
+    {{ upload.document }}
+    {{ upload.document.errors }}
+  </div>
+  <button type="submit" class="primary">Review import</button>
+</form>

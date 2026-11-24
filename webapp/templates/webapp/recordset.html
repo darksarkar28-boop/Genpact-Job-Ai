@@ -1,0 +1,10 @@
+<section class="card editor-section" id="{{ group.prefix }}" data-formset="{{ group.prefix }}">
+  <h2>{{ section }}</h2>
+  {{ group.management_form }}
+  {{ group.non_form_errors }}
+  <div data-rows>
+    {% for row in group %}{% include "webapp/record.html" %}{% endfor %}
+  </div>
+  <template>{% include "webapp/record.html" with row=group.empty_form %}</template>
+  <button class="secondary add-row" data-add type="button" hidden>{{ button }}</button>
+</section>

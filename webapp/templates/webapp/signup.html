@@ -1,0 +1,20 @@
+{% extends "webapp/base.html" %}
+{% block title %}Create an account{% endblock %}
+{% block account_link %}<a href="{% url 'login' %}">Sign in</a>{% endblock %}
+{% block content %}
+<div class="auth-layout">
+  <section class="intro">
+    <h1>Your résumé, ready to work.</h1>
+    <p class="lead">Build an editable master profile from your résumé or LinkedIn export. Review your experience, education and skills in one place.</p>
+    <div class="formats" aria-label="Accepted formats"><span>PDF</span><span>DOCX</span><span>LinkedIn ZIP</span></div>
+  </section>
+  <section class="card auth-card">
+    <h2>Create an account</h2>
+    <form method="post">{% csrf_token %}
+      {{ form.non_field_errors }}
+      {% for field in form %}{% include "webapp/field.html" %}{% endfor %}
+      <button type="submit" class="primary wide">Create account</button>
+    </form>
+  </section>
+</div>
+{% endblock %}
