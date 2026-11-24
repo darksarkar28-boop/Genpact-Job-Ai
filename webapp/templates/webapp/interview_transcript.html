@@ -1,0 +1,12 @@
+{% extends "webapp/base.html" %}
+{% block title %}Review recorded answer{% endblock %}
+{% block content %}
+<section class="card stack">
+<h1>Review transcript for question {{ answer.question_index|add:1 }}</h1>
+<p>{{ question.text }}</p>
+<p>The timed recording is preserved. Download and listen to your original answer, then type or paste its transcript. Confirm only what you actually said. This is manual transcription, not an automated speech recognition service. Saving computes the transcript-based practice rubric; it does not alter the recording or deadline.</p>
+<a href="{% url 'interview-download' attempt.pk answer.question_index %}">Download original recording</a>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit" class="primary">Confirm transcript and score answer</button></form>
+<a href="{% url 'interview-detail' attempt.pk %}">Return to interview feedback</a>
+</section>
+{% endblock %}
