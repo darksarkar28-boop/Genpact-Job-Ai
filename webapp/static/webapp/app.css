@@ -103,3 +103,24 @@ input[type=file]::file-selector-button { padding: .45rem .65rem; margin-right: .
   .account, .brand { gap: .45rem; }
   .nav { flex-wrap: wrap; padding-block: .65rem; }
 }
+
+/* Account-scoped application Kanban */
+.board-create { margin-bottom: 1.4rem; }
+.board-create h2 { margin-bottom: 1rem; }
+.board-create-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem 1rem; align-items: end; }
+.board-create-form > button { justify-self: start; }
+.board-columns { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(15.5rem, 1fr); gap: .9rem; overflow-x: auto; padding: 1rem 0 1.5rem; align-items: start; }
+.board-column { min-height: 14rem; padding: .9rem; background: #edf3ed; border: 1px solid var(--line); border-radius: .75rem; }
+.board-column h2 { font-size: 1.15rem; margin-bottom: .75rem; }
+.board-card { border: 1px solid var(--line); padding: .9rem; border-radius: .65rem; background: var(--card); overflow-wrap: anywhere; }
+.board-card + .board-card { margin-top: .75rem; }
+.board-company { margin: .2rem 0 .6rem; color: var(--muted); }
+.board-move-form { display: grid; gap: .5rem; margin-top: .85rem; }
+.board-move-form select, .board-create-form select { width: 100%; padding: .55rem; border: 1px solid #9baea2; border-radius: .4rem; background: white; color: var(--ink); font: inherit; }
+.board-move-form button { justify-self: start; }
+.board-history { border-top: 1px solid var(--line); margin-top: .8rem; padding-top: .6rem; }
+.board-history summary { cursor: pointer; font-weight: 600; }
+.board-history ol { padding-left: 1.15rem; margin: .5rem 0 0; font-size: .82rem; }
+.board-history li + li { margin-top: .45rem; }
+.board-live { margin-bottom: .35rem; }
+@media (max-width: 46rem) { .board-create-form { grid-template-columns: minmax(0, 1fr); } }
