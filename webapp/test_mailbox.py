@@ -308,3 +308,149 @@ class OutlookMessageBodyTests(TestCase):
             fetch.call_args.kwargs["extra_headers"]["Prefer"],
             'outlook.body-content-type="text"',
         )
+
+
+
+class ManualResolutionTests(TestCase):
+    """Explicit uncertain/conflicting decisions must be durable, scoped and race-safe."""
+
+    def setUp(self):
+        from .mail_oauth import encrypt
+        self.user = get_user_model().objects.create_user("manual_resolution_user", password="mail-review-2026")
+        self.other = get_user_model().objects.create_user("manual_resolution_other", password="mail-review-2026")
+        self.client.force_login(self.user)
+        self.env = patch.dict(os.environ, {"JOBWEB_MAIL_TOKEN_KEY": Fernet.generate_key().decode()})
+        self.env.start()
+        self.addCleanup(self.env.stop)
+        self.app_a = Application.objects.create(
+            user=self.user, company="Example Labs", role="Data Engineer", status="applied",
+        )
+        self.app_b = Application.objects.create(
+            user=self.user, company="Example Labs Research", role="Research Engineer", status="applied",
+        )
+        self.app_conflict = Application.objects.create(
+            user=self.user, company="Unique Vision Labs", role="Analyst", status="applied",
+        )
+        self.connection = MailConnection.objects.create(
+            user=self.user, provider="google", access_token_ciphertext=encrypt("fixture"),
+        )
+
+    def email(self, mid, subject):
+        return {
+            "id": mid, "subject": subject,
+            "sender": "recruiter@examplelabs.com",
+            "body": "Please review your job application and interview invitation.",
+            "link": "https://mail.google.com/mail/u/0/#all/" + mid,
+            "received_at": timezone.now(),
+        }
+
+    def import_messages(self, rows):
+        from .mail_classifier import import_signals
+        return import_signals(self.connection, rows)
+
+    def resolve(self, signal, app, stage="interview", *, version=None, client=None, **extra):
+        return (client or self.client).post(
+            reverse("mailbox_decide", args=[signal.pk]),
+            {"action": "resolve", "application_choice": f"{app.pk}:{app.version if version is None else version}",
+             "status": stage, "confirm_resolution": "yes", **extra},
+        )
+
+    def test_ambiguous_match_manual_version_race_and_replay(self):
+        candidate = self.email("ambiguous-1", "Example Labs and Example Labs Research interview invitation")
+        self.assertEqual(self.import_messages([candidate]), 1)
+        signal = MailSignal.objects.get(provider_message_id="ambiguous-1")
+        self.assertEqual(signal.state, "needs_review")
+        self.assertIsNone(signal.application_id)
+
+        other_tab = Client()
+        other_tab.force_login(self.user)
+        before = other_tab.get(reverse("application_board_revision")).json()["revision"]
+        # Someone moves app A while the review form still holds app A version zero.
+        self.assertRedirects(
+            other_tab.post(reverse("application_move", args=[self.app_a.pk]), {
+                "version": 0, "status": "rejected",
+            }), reverse("application_board"),
+        )
+        self.assertEqual(self.resolve(signal, self.app_a, version=0).status_code, 409)
+        signal.refresh_from_db()
+        self.assertEqual(signal.state, "needs_review")
+        self.assertEqual(self.app_a.events.count(), 1)
+        self.assertRedirects(self.resolve(signal, self.app_b, version=0), reverse("application_board"))
+        self.app_a.refresh_from_db()
+        self.app_b.refresh_from_db()
+        signal.refresh_from_db()
+        self.assertEqual((self.app_a.status, self.app_b.status), ("rejected", "interview"))
+        self.assertEqual(signal.application_id, self.app_b.pk)
+        event = ApplicationStatusEvent.objects.get(application=self.app_b)
+        self.assertEqual((event.origin, event.mail_signal_id), ("manual_mail_review", signal.pk))
+        self.assertEqual(event.source_message_id, "ambiguous-1")
+        self.assertEqual(event.source_message_link, candidate["link"])
+        self.assertNotEqual(before, other_tab.get(reverse("application_board_revision")).json()["revision"])
+
+        self.assertEqual(self.import_messages([candidate]), 0)
+        self.assertEqual(MailSignal.objects.filter(provider_message_id="ambiguous-1").count(), 1)
+        self.assertEqual(self.resolve(signal, self.app_b, version=0).status_code, 409)
+        self.assertEqual(self.app_b.events.count(), 1)
+        self.assertContains(self.client.get(reverse("application_board")), "Source email")
+
+    def test_conflicting_proposals_require_resolution_and_only_one_transition(self):
+        interview = self.email("conflict-1", "Unique Vision Labs technical interview invitation")
+        offer = self.email("conflict-2", "Unique Vision Labs formal offer letter")
+        self.assertEqual(self.import_messages([interview, offer]), 2)
+        first = MailSignal.objects.get(provider_message_id="conflict-1")
+        second = MailSignal.objects.get(provider_message_id="conflict-2")
+        self.assertEqual((first.state, second.state), ("needs_review", "needs_review"))
+        self.assertEqual(self.app_conflict.status, "applied")
+        self.assertRedirects(self.resolve(first, self.app_conflict), reverse("application_board"))
+        self.app_conflict.refresh_from_db()
+        self.assertEqual((self.app_conflict.status, self.app_conflict.version), ("interview", 1))
+        self.assertEqual(self.app_conflict.events.count(), 1)
+        self.assertEqual(self.resolve(second, self.app_conflict, version=0, stage="offer").status_code, 409)
+        self.assertRedirects(
+            self.resolve(second, self.app_conflict, version=1, stage="offer"), reverse("application_board"),
+        )
+        self.app_conflict.refresh_from_db()
+        self.assertEqual((self.app_conflict.status, self.app_conflict.events.count()), ("offer", 2))
+        self.assertEqual(set(self.app_conflict.events.values_list("source_message_id", flat=True)),
+                         {"conflict-1", "conflict-2"})
+        self.assertEqual(self.import_messages([interview, offer]), 0)
+        self.assertEqual(self.app_conflict.events.count(), 2)
+
+    def test_offer_decision_dismissal_and_disconnection_keep_audit_ref(self):
+        email = self.email("manual-offer", "Example Labs and Example Labs Research offer letter")
+        self.import_messages([email])
+        signal = MailSignal.objects.get(provider_message_id="manual-offer")
+        self.assertEqual(self.resolve(signal, self.app_b, stage="hired", version=0).status_code, 422)
+        self.assertEqual(
+            self.resolve(signal, self.app_b, stage="hired", version=0,
+                         confirm_offer_decision="yes").status_code, 302,
+        )
+        self.app_b.refresh_from_db()
+        self.assertEqual(self.app_b.status, "hired")
+        self.client.post(reverse("mailbox_disconnect", args=["google"]))
+        self.assertFalse(MailSignal.objects.exists())
+        event = ApplicationStatusEvent.objects.get(application=self.app_b)
+        self.assertIsNone(event.mail_signal_id)
+        self.assertEqual((event.source_message_id, event.source_message_link),
+                         ("manual-offer", email["link"]))
+        self.assertContains(self.client.get(reverse("application_board")), "Source email")
+
+    def test_foreign_application_and_csrf_cannot_resolve(self):
+        email = self.email("cross-account", "Example Labs and Example Labs Research interview invitation")
+        self.import_messages([email])
+        signal = MailSignal.objects.get()
+        foreign_app = Application.objects.create(user=self.other, company="Other", role="Analyst")
+        self.assertEqual(self.resolve(signal, foreign_app).status_code, 404)
+        other_session = Client()
+        other_session.force_login(self.other)
+        self.assertEqual(self.resolve(signal, self.app_b, client=other_session).status_code, 404)
+        self.assertEqual(signal.state, "needs_review")
+        csrf = Client(enforce_csrf_checks=True)
+        csrf.force_login(self.user)
+        self.assertEqual(self.resolve(signal, self.app_b, client=csrf).status_code, 403)
+        self.assertEqual(
+            self.client.post(reverse("mailbox_decide", args=[signal.pk]), {
+                "action": "resolve", "application_choice": f"{self.app_b.pk}:0",
+                "status": "interview",
+            }).status_code, 422,
+        )
