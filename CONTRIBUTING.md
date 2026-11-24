@@ -16,7 +16,7 @@ Thanks for considering a contribution! This repo has a deliberate, narrow philos
 ## What gets declined
 
 - **Market- or country-specific skills and content.** One country's portal opens the door to every country's portal; there is no principled stopping point. Precedent: [#31] (India), [#39] (France, despite an honest and excellent PR), [#67] (China). No portal skill ships in-tree, country-agnostic ones included: every portal lives in [community-portals](https://github.com/ai-job-search-dev/community-portals), owned by its users through CODEOWNERS. Contribute portals there.
-- **Personal profile data.** The template ships placeholders; your populated profile lives in your fork. CI enforces this (`placeholder-integrity`). Precedent: [#17], [#72].
+- **Personal profile data.** The template ships placeholders; your populated profile lives in your fork. The optional stock-template CI checks enforce the placeholders. Precedent: [#17], [#72].
 - **Alternative-harness ports and duplicate workflow sources.** The markdown specs ARE the implementation; a second copy (another agent CLI, an orchestration layer, a wrapper command) drifts from the first the moment either changes. Precedent: [#44], [#49], [#66].
 - **Speculative infrastructure.** Complexity must be argued from a problem that exists, not one that might. Precedent: [#63].
 - **Kitchen-sink PRs.** One concern per PR. Bundles get asked to split ([#73]) - and splits get reviewed fast ([#75], [#76] arrived within the hour and were handled same-day).
@@ -40,15 +40,9 @@ Reviews here are empirical. Bug reports are reproduced on master before the fix 
 
 **Invited PRs:** when a maintainer comment explicitly invites a named contributor to file the PR for an issue they diagnosed or designed, that invitation reserves the implementation for them - by default for seven days from the invite, longer when they say they are working on it. A duplicate PR filed inside that window will be closed in favor of the invitee's, regardless of arrival order or polish. Review, test, and comment on an invited PR all you like - that multiplies the work; racing it doesn't. (Prospective from 2026-08-14.)
 
-## Building for your own market? Do this instead
+## Building for your own market?
 
-1. Fork the repo and run `/add-portal` with your local job board - it scaffolds a portal skill matching the shipped contract, and `/scrape` picks it up automatically.
-2. Announce your fork in the pinned [Community forks & adaptations](https://github.com/ai-job-search-dev/ai-job-search/discussions/78) discussion so others can find it.
-3. Run the framework update checker (`python3 tools/check_upstream_updates.py`) in your fork to check if upstream has updated any framework files and compare them with your personalized variants.
-
-Market-specific skills are genuinely valuable - they just live in forks, where their maintainers can test them and their users can find them.
-
-One practical warning: when you open a PR from a fork, GitHub targets this upstream repo by default, not your own - three personalized-fork PRs landed here by accident in a single week ([#155], [#162], [#165]). Check the "base repository" dropdown before publishing.
+In a Genpact-Job-Ai clone, run `/add-portal` with your local job board to scaffold a portal skill that `/scrape` can discover. The original project's [Community forks & adaptations](https://github.com/ai-job-search-dev/ai-job-search/discussions/78) thread lists other market adaptations for reference.
 
 ## Porting to another AI runtime? Forks too
 
@@ -66,12 +60,12 @@ This is a decision, not a dogma: if cross-runtime standards mature to the point 
 
 ## Practical notes
 
-- **PR titles are the release notes, and they set the version**: don't edit `CHANGELOG.md` (it's frozen at 1.7.4). Every Monday a workflow publishes a GitHub Release listing the titles of the PRs merged that week, so write the title for a fork owner and use a [Conventional Commits](https://www.conventionalcommits.org/) type: `feat` makes the release a minor bump, `type!:` a major one, and `fix`, `refactor` or `perf` a patch; a week of only `docs`, `chore`, `ci` and similar ships nothing on its own. [commitizen](https://commitizen-tools.github.io/commitizen/) computes it: `uvx --from commitizen cz bump --get-next` previews the next version. PRs are squash-merged with the title as the whole commit message, so the title is the only place to mark a change; CI runs `cz check` on it, and re-runs it when you edit the title.
+- **PR titles are the release notes, and they set the version**: don't edit `CHANGELOG.md` (it's frozen at 1.7.4). The manual release workflow uses merged PR titles for release notes and versioning, so use a [Conventional Commits](https://www.conventionalcommits.org/) type: `feat` makes the release a minor bump, `type!:` a major one, and `fix`, `refactor` or `perf` a patch; changes limited to `docs`, `chore`, `ci` and similar do not bump the version. [commitizen](https://commitizen-tools.github.io/commitizen/) computes it: `uvx --from commitizen cz bump --get-next` previews the next version. PRs are squash-merged with the title as the whole commit message, so the title is the only place to mark a change; CI runs `cz check` on it, and re-runs it when you edit the title.
 - **Portal-skill contract**: `search`/`detail` commands, `--format json|table|plain`, stderr JSON errors with exit 1, backoff on 429/5xx, zero runtime dependencies by default. See `/add-portal`'s spec and community-portals' `linkedin-search` as the reference implementation.
 - **Personal-use boundaries**: portal skills that touch ToS-restricted sources carry a prominent personal-use-only warning, and CI deliberately makes no live portal requests. Don't "fix" that.
-- **LaTeX changes**: both templates must compile (`lualatex` for the CV, `xelatex` for the cover letter) and hold their exact page counts. CI smoke-checks this.
+- **LaTeX changes**: both templates must compile (`lualatex` for the CV, `xelatex` for the cover letter) and have extractable text. The opt-in stock-template CI checks also verify the exact example page counts.
 
-Questions and proposals are welcome in [Discussions](https://github.com/ai-job-search-dev/ai-job-search/discussions) - an Idea thread costs nothing and can save you building the wrong thing :-)
+Use the [Genpact-Job-Ai issue tracker](https://github.com/darksarkar28-boop/Genpact-Job-Ai/issues) for project questions and proposals.
 
 [#17]: https://github.com/ai-job-search-dev/ai-job-search/issues/17
 [#30]: https://github.com/ai-job-search-dev/ai-job-search/issues/30

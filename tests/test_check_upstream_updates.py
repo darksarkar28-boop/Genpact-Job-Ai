@@ -78,51 +78,26 @@ class UpstreamCheckerRepoFixture(unittest.TestCase):
         )
 
 
-class ForkWithoutUpstreamRemoteTests(UpstreamCheckerRepoFixture):
+class OriginFallbackTests(UpstreamCheckerRepoFixture):
     def setUp(self):
         super().setUp()
         self.add_remote("origin", FORK_URL)
         self.materialize_remote_ref("origin")
 
-    def test_fork_fallback_warns_that_check_is_against_own_fork(self):
+    def test_missing_remote_falls_back_to_origin(self):
         result = self.run_checker("--remote", "upstream")
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("Falling back to 'origin'", result.stdout)
-        self.assertIn("does not point to the ai-job-search template repo", result.stdout)
-        self.assertNotIn("up to date with upstream!", result.stdout)
+        self.assertIn("This comparison uses only the configured origin.", result.stdout)
         self.assertIn("up to date with origin/master", result.stdout)
 
-
-class DirectCloneFallbackTests(UpstreamCheckerRepoFixture):
-    def setUp(self):
-        super().setUp()
-        self.add_remote("origin", TEMPLATE_URL)
-        self.materialize_remote_ref("origin")
-
-    def test_clone_of_template_falls_back_without_fork_warning(self):
-        result = self.run_checker("--remote", "upstream")
+    def test_explicit_origin_does_not_warn(self):
+        result = self.run_checker("--remote", "origin")
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("Falling back to 'origin'", result.stdout)
-        self.assertNotIn("does not point to the ai-job-search template repo", result.stdout)
+        self.assertNotIn("Falling back to 'origin'", result.stdout)
         self.assertIn("up to date with origin/master", result.stdout)
-
-    def test_clone_with_lowercased_template_url_falls_back_without_fork_warning(self):
-        # GitHub serves repo paths case-insensitively, so a clone from
-        # https://github.com/madslorentzen/ai-job-search is still the template.
-        subprocess.run(
-            ["git", "remote", "set-url", "origin", TEMPLATE_URL.lower()],
-            cwd=self.root,
-            check=True,
-            capture_output=True,
-        )
-
-        result = self.run_checker("--remote", "upstream")
-
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("Falling back to 'origin'", result.stdout)
-        self.assertNotIn("does not point to the ai-job-search template repo", result.stdout)
 
 
 class UpstreamRemotePresentTests(UpstreamCheckerRepoFixture):
@@ -137,7 +112,6 @@ class UpstreamRemotePresentTests(UpstreamCheckerRepoFixture):
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertNotIn("Falling back to 'origin'", result.stdout)
-        self.assertNotIn("does not point to the ai-job-search template repo", result.stdout)
         self.assertIn("up to date with upstream/master", result.stdout)
 
 

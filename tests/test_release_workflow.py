@@ -13,8 +13,16 @@ class ReleaseWorkflowTests(unittest.TestCase):
     def setUp(self):
         self.text = WORKFLOW.read_text(encoding="utf-8")
 
-    def test_release_runs_only_on_upstream(self):
-        self.assertIn("if: github.repository == 'ai-job-search-dev/ai-job-search'", self.text)
+    def test_release_runs_only_on_destination(self):
+        self.assertIn("if: github.repository == 'darksarkar28-boop/Genpact-Job-Ai'", self.text)
+
+    def test_release_requires_manual_dispatch(self):
+        self.assertIn("on:\n  workflow_dispatch:", self.text)
+        self.assertNotIn("schedule:", self.text)
+
+    def test_release_uses_imported_git_tags_as_its_baseline(self):
+        self.assertIn("git describe --tags --abbrev=0 HEAD", self.text)
+        self.assertNotIn("gh release view", self.text)
 
     def test_write_access_is_granted_to_the_job_not_the_workflow(self):
         top_level = self.text.split("\njobs:", 1)[0]

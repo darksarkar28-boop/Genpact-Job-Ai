@@ -1,9 +1,5 @@
 blank_issues_enabled: true
 contact_links:
-  - name: Filing from a personalized fork? Read this first
-    url: https://github.com/ai-job-search-dev/ai-job-search/blob/master/SETUP.md#2-fork-and-clone
-    about: >-
-      The gh CLI in a fork clone targets THIS public repo by default. Personal
-      application tracking, evaluations, and incident logs belong in your own
-      fork or private repo — run `gh repo set-default <you>/ai-job-search`
-      there to keep your automation pointed home.
+  - name: Keep your profile and application records private
+    url: https://github.com/darksarkar28-boop/Genpact-Job-Ai/blob/master/SETUP.md#8-keeping-your-profile-private
+    about: Review the privacy setup before sharing application details or logs.

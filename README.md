@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/ai-job-search-dev/ai-job-search/actions/workflows/ci.yml"><img src="https://github.com/ai-job-search-dev/ai-job-search/actions/workflows/ci.yml/badge.svg" alt="CI" height="20"></a>
+  <a href="https://github.com/darksarkar28-boop/Genpact-Job-Ai/actions/workflows/ci.yml"><img src="https://github.com/darksarkar28-boop/Genpact-Job-Ai/actions/workflows/ci.yml/badge.svg?branch=master" alt="CI" height="20"></a>
   &nbsp;
   <a href="https://claude.com/claude-code"><img src="https://img.shields.io/badge/built_on-Claude_Code-2A9D8F?style=flat" alt="Built on Claude Code" height="20"></a>
   &nbsp;
@@ -95,31 +95,17 @@ The framework encodes career guidance best practices, including structured evalu
 
 </details>
 
-### 1. Fork and clone
-
-**For your own job search**, start from a private copy:
+### 1. Clone Genpact-Job-Ai
 
 ```bash
-gh repo clone ai-job-search-dev/ai-job-search
-cd ai-job-search
-git remote rename origin upstream
-gh repo create ai-job-search --private --source=. --remote=origin --push
-gh repo set-default <your-github-username>/ai-job-search
-```
-
-**To contribute changes back**, fork instead:
-
-```bash
-gh repo fork ai-job-search-dev/ai-job-search --clone
-cd ai-job-search
+git clone --branch master https://github.com/darksarkar28-boop/Genpact-Job-Ai.git
+cd Genpact-Job-Ai
 ```
 
 > [!IMPORTANT]
-> **A fork of this repo is always public** — GitHub does not allow private forks of
-> public repositories — and `/setup` (step 3 below) writes your personal data (name,
-> contact details, employment history, salary expectations) into **tracked** files.
-> Fork only to contribute. Updates work the same way from a private copy; see
-> [SETUP.md section 8](SETUP.md#8-pulling-upstream-updates-into-your-fork).
+> `/setup` writes personal data such as your contact details and employment history
+> into tracked files. Keep profile commits local or push them to a private repository.
+> See [SETUP.md section 8](SETUP.md#8-keeping-your-profile-private) before using a public remote.
 
 ### 2. Add job portals for your market (optional)
 
@@ -341,7 +327,7 @@ To wipe your profile data and start fresh:
 
 ### Staying up to date
 
-Upstream moves fast. Rather than pulling raw `master` and hoping, update your fork to a tagged [release](../../releases) - a weekly checkpoint that passed CI, with its changes listed on the release page. `python3 tools/check_upstream_updates.py` previews exactly which of your personalized files an update touches before you merge, and `python3 tools/upstream_triage.py` sorts the commits you're behind into "worth reviewing" vs "probably skip" (a weekly workflow can post this to a rolling issue). Full walkthrough in [SETUP.md, section 8](SETUP.md#8-pulling-upstream-updates-into-your-fork).
+Run `git pull --ff-only origin master` from a clean `master` checkout to update from Genpact-Job-Ai. The [tags](../../tags) include the original project's version history.
 
 ## Tips for better results
 
@@ -415,8 +401,7 @@ ai-job-search/
 │   ├── references/                    # Reference letters
 │   └── applications/                  # Past application records (<company>_<role>/)
 ├── .github/workflows/ci.yml           # CI: LaTeX smoke compiles, skill lint, CLI typechecks
-├── .github/workflows/release.yml      # Weekly SemVer release from merged PR titles (skipped on forks)
-├── .github/workflows/upstream-watch.yml  # Weekly upstream triage into a rolling issue (reports only)
+├── .github/workflows/release.yml      # Manually publish a Genpact-Job-Ai release
 ├── salary_lookup.py                   # Salary benchmarking tool (BYO data)
 ├── tools/
 │   ├── check_framework_version.py     # CI check: framework_version bumped when skill files change

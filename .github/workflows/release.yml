@@ -1,20 +1,10 @@
-# Weekly release. Every Monday it tags master and publishes a GitHub Release
-# with GitHub-generated notes (one line per merged PR title), replacing the
-# hand-edited CHANGELOG.md, which is frozen at 1.7.4.
-#
-# commitizen (`cz bump --get-next`, configured in .cz.toml) picks the SemVer
-# version from the merged commit types; a manual run can override it.
-#
-# It skips a week with nothing to bump and refuses to release a master commit
-# whose CI run did not pass. The release is created through the API, so it
-# never commits to master. Upstream only: forks inherit this file and must not
-# cut releases of their own.
+# Manually publish a Genpact-Job-Ai release from a CI-passing master commit.
+# Commitizen computes the SemVer bump from merged commit types unless a version
+# is supplied. The last reachable tag supplies the base for release notes.
 
-name: Weekly release
+name: Publish release
 
 on:
-  schedule:
-    - cron: "0 6 * * 1" # 06:00 UTC every Monday
   workflow_dispatch:
     inputs:
       version:
@@ -29,8 +19,8 @@ concurrency:
 
 jobs:
   release:
-    name: Tag and publish the weekly release
-    if: github.repository == 'ai-job-search-dev/ai-job-search'
+    name: Tag and publish the release
+    if: github.repository == 'darksarkar28-boop/Genpact-Job-Ai'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -51,7 +41,7 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          last=$(gh release view --json tagName -q .tagName)
+          last=$(git describe --tags --abbrev=0 HEAD)
           head=$(git rev-parse HEAD)
           if [ "$(git rev-parse "$last^{commit}")" = "$head" ]; then
             echo "No commits since $last, nothing to release"
@@ -64,7 +54,7 @@ jobs:
             next=$(uvx --from commitizen==4.19.3 cz bump --get-next) || rc=$?
             case $rc in
               0) next="v$next" ;;
-              21) echo "No feat, fix, refactor, perf or breaking commits since $last, nothing to release"; exit 0 ;;
+              21) echo "No version-bumping commits since $last, nothing to release"; exit 0 ;;
               *) echo "::error::cz bump --get-next exited $rc: $next"; exit 1 ;;
             esac
           fi

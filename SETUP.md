@@ -169,31 +169,17 @@ The default extractor is **pypdf** (BSD, `pip install pypdf`). Poppler `pdftotex
 
 If a command still uses `pdftotext -layout`, it must pass `-enc UTF-8` as well. If **neither** extractor is available, `/apply` skips the mechanical check with a warning and falls back to a visual keyword review — everything else works normally.
 
-## 2. Fork and clone
+## 2. Clone Genpact-Job-Ai
 
 ```bash
-gh repo fork ai-job-search-dev/ai-job-search --clone
-cd ai-job-search
-gh repo set-default <your-github-username>/ai-job-search
+git clone --branch master https://github.com/darksarkar28-boop/Genpact-Job-Ai.git
+cd Genpact-Job-Ai
 ```
 
-Or manually: fork on GitHub, then clone your fork.
-
-> **The `set-default` line is not optional.** `gh repo fork --clone` sets the
-> **upstream** repo as gh's default repository ("The `upstream` remote will be set as
-> the default remote repository" — `gh repo fork --help`), and gh uses the default for
-> **creating issues and PRs**. Without it, any later `gh issue create` run from this
-> clone — by you or by an agent you have asked to track your applications — silently
-> files on the upstream **public** tracker, publishing whatever the issue contains
-> under your GitHub identity, on a repo where you cannot delete it (#389).
-
-> **Before you go further: forks are public.** GitHub cannot make a fork of a public
-> repository private, and `/setup` (section 6) writes your personal data into **tracked**
-> files — pushing those commits to a fork publishes them. If this copy is for your own
-> job search rather than for contributing, prefer a **private repository** with this repo
-> as `upstream`: see section 8, step 1 for the exact commands and why committing your
-> personalization there is still the right move. Everything else in this guide works
-> identically either way.
+> [!IMPORTANT]
+> `/setup` writes personal data such as your contact details and employment history
+> into tracked files. Keep profile commits local or push them to a private repository.
+> See [section 8](#8-keeping-your-profile-private) before using a public remote.
 
 ## 3. Add job portals and install their CLI dependencies
 AI Job Search ships no job-board CLIs. Portal skills live in [community-portals](https://github.com/ai-job-search-dev/community-portals), one folder per board under `portals/<country>/` (LinkedIn and multi-market boards under `portals/global/`). For each board you want, ask your agent, swapping in its folder:
@@ -311,51 +297,31 @@ Set-Location cover_letters; xelatex cover_<company>_<role>.tex; Set-Location ..
 
 These commands apply to the stock templates (moderncv CV, `cover.cls` cover letter). If you'd rather use your own LaTeX template, run `/add-template` — it captures the template's compile engine, fonts, style rules, and page limit, test-compiles it, and wires it into `/apply`. See the "LaTeX templates" section in the README.
 
-## 8. Pulling upstream updates into your fork
+## 8. Keeping your profile private
 
-Upstream keeps improving the methodology files your fork has personalized, so plan for updates from day one:
+`/setup` edits tracked profile files in place. Keep personalized commits local,
+or use a private GitHub repository. In a separate clone, before pushing any
+profile commits, you can add an empty private repository as follows:
 
-**Prefer releases over raw `master`.** Tagged [releases](../../releases) are weekly checkpoints of `master` that passed CI, each listing the PRs it contains on its release page ([CHANGELOG.md](CHANGELOG.md) covers releases up to 1.7.4). Updating to a tag pulls a stable, documented state instead of whatever `master` happens to be mid-review. Fetch tags with `git fetch upstream --tags` and merge a release (for example `git merge v1.0.0`) when you want stability; pull `master` directly only when you specifically want the latest unreleased changes. The steps below apply either way - substitute the release tag for `upstream/master` where you see it.
+```bash
+git remote rename origin project
+gh repo create YOUR-GITHUB-USERNAME/Genpact-Job-Ai-private --private --source=. --remote=origin --push
+gh repo set-default YOUR-GITHUB-USERNAME/Genpact-Job-Ai-private
+```
 
-1. **Commit your personalization - but know where those commits land.** `/setup` edits CLAUDE.md and the profile skill files in place; those edits are *yours*, and committing them is what lets updates merge cleanly. But a GitHub **fork of this repo is public** - forks of public repositories cannot be made private - so anything you commit *and push to a fork* is visible to anyone. If you want your profile in a remote at all, don't push it to a fork: use a **private** repository with this repo as the `upstream` remote, so you keep receiving updates (commands below). Committing locally without pushing is also fine. The genuinely sensitive files (tracker, salary data, `documents/`, application archives) are gitignored and never enter git either way. An uncommitted working tree is the most common reason `git pull` refuses to merge at all (`Your local changes ... would be overwritten`).
-
-   To create the private repository from a clone whose `origin` is still this repo:
-   ```bash
-   git remote rename origin upstream
-   gh repo create ai-job-search --private --source=. --remote=origin --push
-   gh repo set-default <your-github-username>/ai-job-search
-   ```
-   If you already forked, your clone has an `upstream` remote and `origin` is the public fork: replace the first line with `git remote remove origin`, and pick a different repository name, because the fork already uses `ai-job-search`.
-2. **Preview what changed before pulling:**
-   ```bash
-   git remote add upstream https://github.com/ai-job-search-dev/ai-job-search.git   # first time only, if you cloned your own fork
-   git fetch upstream    # or origin, if you cloned the template directly
-   python3 tools/check_upstream_updates.py
-   ```
-   It compares the `framework_version` markers in your framework files against upstream and lists exactly which methodology files changed, with the diff command for each.
-
-   Two tools answer two different questions, and it's worth running both:
-   - **`check_upstream_updates.py`** — *which of my personalized files changed?* It reads the `framework_version` stamp on each methodology file, so it flags exactly the customized files a release touched.
-   - **`upstream_triage.py`** — *which upstream commits deserve my attention?* It walks the commits you're behind and sorts them into "worth reviewing" vs "probably skip", dropping anything you've already cherry-picked (matched by `git patch-id`, so ported work falls off with no bookkeeping), commits that only touch files your fork removed, and SHAs you've listed in `.github/upstream-wontport.txt`. It's report-only — it prints ready-to-run `git cherry-pick` lines but never merges, pushes, or opens a PR, because on a fork "applies cleanly" isn't "correct".
-
-     ```bash
-     python3 tools/upstream_triage.py --remote upstream
-     ```
-
-     Forks also inherit a `.github/workflows/upstream-watch.yml` that runs this weekly and writes the result into a single rolling issue (it no-ops on the upstream template itself, and stays disabled on a fork until you enable Actions).
-3. **Merge normally.** `git merge upstream/master` (or `git pull`) three-way-merges upstream's edits around your personalization; because methodology edits rarely touch the lines `/setup` filled in, most updates land cleanly. A conflict in a personalized file is a *feature*, not a failure — it means upstream changed methodology in a section you customized, and the version marker plus its changelog commit tell you why. Resolve by keeping your data and adopting the methodology change around it.
+Here `project` still points to [darksarkar28-boop/Genpact-Job-Ai](https://github.com/darksarkar28-boop/Genpact-Job-Ai) if you want to
+fetch changes later. The GitHub CLI is optional for local-only setup.
 
 ### Tracking your own directory without editing `security_guards.py`
 
-If your fork keeps a tracked placeholder under a personal-data ignore rule (for example a `leads/` folder with a `.gitkeep`), `tools/security_guards.py` rejects the `!leads/.gitkeep` negation because it is not in `ALLOWED_IGNORE_NEGATIONS`. Editing that set works, but every upstream change near it then conflicts on merge. Instead, list the negation in `.github/security-guards-local.txt`:
+If you need a tracked placeholder under a personal-data ignore rule (for example a `leads/` folder with a `.gitkeep`), list the `!leads/.gitkeep` exception in `.github/security-guards-local.txt` so `tools/security_guards.py` permits it:
 
 ```text
-# fork-only tracked placeholders
+# Local tracked placeholders
 !leads/.gitkeep
 ```
 
-One negation per line; blank lines and `#` comments are ignored. The file can only *extend* the allowlist: any other line (a plain ignore rule, say) fails the guard, and a negation not listed here or in `ALLOWED_IGNORE_NEGATIONS` still fails. If the file is absent nothing changes. The upstream template never ships it, and the guard fails if it appears there (CI decides which side it is on from `GITHUB_REPOSITORY`).
-
+One negation per line; blank lines and `#` comments are ignored. The file can only *extend* the allowlist: any other line (a plain ignore rule, say) fails the guard, and a negation not listed here or in `ALLOWED_IGNORE_NEGATIONS` still fails.
 ## Troubleshooting
 
 ### "salary_data.json not found"

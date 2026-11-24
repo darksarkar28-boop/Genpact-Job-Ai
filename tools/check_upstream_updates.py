@@ -13,7 +13,6 @@ This script:
 
 from __future__ import annotations
 import argparse
-import os
 import re
 import shlex
 import subprocess
@@ -35,18 +34,12 @@ FRAMEWORK_FILES = [
     "AGENTS.md",
 ]
 
-UPSTREAM_REPO_SLUG = "ai-job-search-dev/ai-job-search"
-
 def run_git(args: list[str]) -> tuple[int, str, str]:
     res = subprocess.run(
         ["git"] + args, cwd=str(ROOT), capture_output=True, text=True,
         encoding="utf-8", errors="replace",
     )
     return res.returncode, res.stdout, res.stderr
-
-def get_remote_url(remote_name: str) -> str:
-    rc, stdout, _ = run_git(["remote", "get-url", remote_name])
-    return stdout.strip() if rc == 0 else ""
 
 def get_framework_version_from_text(text: str) -> str | None:
     if not text.startswith("---\n"):
@@ -90,24 +83,14 @@ def main() -> int:
     remote = args.remote
     if remote not in remotes:
         if "origin" in remotes:
-            print(f"Warning: Remote '{remote}' not found. Falling back to 'origin'.")
+            print(
+                f"Warning: Remote '{remote}' not found. Falling back to 'origin'. "
+                "This comparison uses only the configured origin."
+            )
             remote = "origin"
         else:
             print("Error: No git remotes found.")
             return 1
-
-    # A fork's own 'origin' can never reveal upstream updates: warn so the
-    # user is not misled by the final '[OK]' line below. (Direct clones of
-    # the template repo have origin == the upstream repo, so no warning.)
-    # GitHub serves repo paths case-insensitively, so compare lowercased.
-    if remote != args.remote and UPSTREAM_REPO_SLUG.lower() not in get_remote_url(remote).lower():
-        print(
-            f"Warning: Remote '{remote}' does not point to the ai-job-search "
-            f"template repo ({UPSTREAM_REPO_SLUG}), so this check compares your "
-            f"fork against itself and will never report upstream updates. "
-            f"Add the template repo as a remote to track upstream changes, e.g.:\n"
-            f"  git remote add upstream https://github.com/{UPSTREAM_REPO_SLUG}.git"
-        )
 
     fetch_failed = False
     if not args.no_fetch:

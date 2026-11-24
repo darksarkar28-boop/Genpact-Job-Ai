@@ -9,7 +9,6 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "tools" / "upstream_triage.py"
 WORKFLOW = REPO_ROOT / ".github" / "workflows" / "upstream-watch.yml"
-UPSTREAM_SLUG = "ai-job-search-dev/ai-job-search"
 
 
 def git(root: Path, *args: str) -> str:
@@ -34,8 +33,7 @@ class TriageRepoFixture(unittest.TestCase):
         git(self.root, "init", "-b", "master")
         git(self.root, "config", "user.name", "Test")
         git(self.root, "config", "user.email", "test@example.com")
-        git(self.root, "remote", "add", "upstream",
-            f"https://github.com/{UPSTREAM_SLUG}.git")
+        git(self.root, "remote", "add", "upstream", "https://example.invalid/upstream.git")
 
         self.write("shared.txt", "base\n")
         self.write("kept.py", "print('hi')\n")
@@ -307,31 +305,8 @@ class MissingUpstreamRefTests(TriageRepoFixture):
 
 
 class WorkflowGuardTests(unittest.TestCase):
-    """The workflow must no-op on the upstream template, so a template clone
-    never opens an issue by surprise. GitHub Actions can't run offline, so we
-    pin the guard by asserting the job's `if` condition excludes upstream."""
-
-    def test_workflow_is_guarded_against_upstream(self):
-        text = WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn(f"github.repository != '{UPSTREAM_SLUG}'", text)
-
-    def test_workflow_uses_builtin_token_only(self):
-        text = WORKFLOW.read_text(encoding="utf-8")
-        self.assertIn("GH_TOKEN: ${{ github.token }}", text)
-        # A cross-repo PAT is what let an early run write outside its own repo;
-        # the built-in token can't. Make sure no PAT secret sneaks back in.
-        self.assertNotIn("secrets.", text)
-
-    def test_actions_are_sha_pinned(self):
-        text = WORKFLOW.read_text(encoding="utf-8")
-        for line in text.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("- uses:") or stripped.startswith("uses:"):
-                ref = stripped.split("uses:", 1)[1].strip()
-                self.assertIn("@", ref)
-                sha = ref.split("@", 1)[1].split()[0]
-                self.assertRegex(sha, r"^[0-9a-f]{40}$",
-                                 f"action not SHA-pinned: {ref}")
+    def test_standalone_repository_has_no_upstream_watcher(self):
+        self.assertFalse(WORKFLOW.exists())
 
 
 if __name__ == "__main__":
