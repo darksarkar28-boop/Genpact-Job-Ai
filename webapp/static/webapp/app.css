@@ -16,7 +16,7 @@ body { margin: 0; }
 .wrap { max-width: 74rem; padding-inline: clamp(1rem, 4vw, 3.5rem); margin-inline: auto; }
 main { padding-bottom: 4rem; }
 .topbar { border-bottom: 1px solid var(--line); background: var(--card); }
-.nav, .brand, .account, .meta, .formats, .tags, .actions { display: flex; align-items: center; gap: 1rem; }
+.nav, .brand, .account, .meta, .formats, .tags, .actions, .profile-actions { display: flex; align-items: center; gap: 1rem; }
 .nav { min-height: 4.5rem; justify-content: space-between; }
 .brand { gap: .6rem; color: var(--ink); font-weight: 750; text-decoration: none; letter-spacing: -.035em; }
 .brand-icon { display: grid; place-items: center; width: 2rem; height: 2rem; border-radius: .45rem; background: var(--green); color: white; font: bold 1.5rem/1 var(--display); }
@@ -43,7 +43,7 @@ p { overflow-wrap: anywhere; }
 .auth-card form, .upload-form, .editor-section > .fields { margin-top: 1.3rem; }
 .field { margin-bottom: 1rem; min-width: 0; }
 label, legend { font-size: .93rem; font-weight: 650; }
-input:not([type=checkbox]):not([type=hidden]), textarea {
+input:not([type=checkbox]):not([type=hidden]):not([type=radio]), textarea, select {
   width: 100%; margin-top: .3rem; padding: .58rem .75rem; border: 1px solid #9baea2;
   border-radius: .4rem; background: white; color: var(--ink); font: inherit; line-height: 1.42;
 }
@@ -54,6 +54,8 @@ textarea { display: block; resize: vertical; }
 .errorlist, .notice { padding: .65rem .9rem; border-radius: .35rem; }
 .errorlist { list-style: none; background: #fbe9e2; color: #852e23; font-size: .9rem; }
 .notice { margin-top: 1.4rem; background: var(--tint); color: #15543c; border: 1px solid #a7c7ad; }
+.notice.error, .job-error { background: #fbe9e2; color: #852e23; border-color: #e6b7aa; }
+.job-error { margin-top: .65rem; padding: .55rem .7rem; border: 1px solid; border-radius: .35rem; font-size: .9rem; }
 .primary, .secondary { display: inline-flex; justify-content: center; align-items: center; min-height: 2.65rem; padding: .55rem 1rem; border: 1px solid var(--green); border-radius: .45rem; font-family: inherit; font-size: .95rem; line-height: 1.4; font-weight: 650; text-decoration: none; cursor: pointer; }
 .primary { background: var(--green); color: white; }
 .primary:hover { background: #0c503c; color: white; }
@@ -63,7 +65,7 @@ button:disabled { opacity: .55; cursor: default; }
 .wide { width: 100%; }
 .page-head { display: flex; gap: 1rem; align-items: center; justify-content: space-between; margin: clamp(2rem, 6vw, 4.5rem) 0 2rem; }
 .page-head > div { min-width: 0; }
-.page-head > .secondary { flex: none; }
+.page-head > .secondary, .profile-actions { flex: none; }
 .kicker, .back { display: inline-block; margin-bottom: .65rem; font-size: .92rem; color: var(--green); }
 .meta { flex-wrap: wrap; gap: .4rem 1.25rem; margin-top: .8rem; font-size: .95rem; color: var(--muted); overflow-wrap: anywhere; }
 .workspace-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: clamp(1rem, 3.5vw, 2.5rem); align-items: start; }
@@ -89,17 +91,48 @@ input[type=file]::file-selector-button { padding: .45rem .65rem; margin-right: .
 .record .field:has(textarea) { grid-column: 1 / -1; }
 .remove { display: inline-flex; gap: .35rem; align-items: center; font-size: .82rem; font-weight: 400; }
 .actions { justify-content: flex-end; position: sticky; bottom: .5rem; padding: .7rem 1rem; background: var(--card); border: 1px solid var(--line); border-radius: .65rem; box-shadow: 0 .25rem 1rem #152a2014; }
+
+.document-layout { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(16rem, .8fr); gap: clamp(1rem, 3.5vw, 2.5rem); align-items: start; }
+.export-form { margin-top: 1.4rem; }
+.template-picker { border: 0; padding: 0; margin: .4rem 0 1.2rem; }
+.template-picker legend { margin-bottom: .65rem; }
+.template-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }
+.template-card { display: flex; gap: .65rem; align-items: flex-start; padding: .8rem; border: 1px solid var(--line); border-radius: .55rem; cursor: pointer; background: #fff; }
+.template-card:has(input:checked) { border-color: var(--green); background: var(--tint); box-shadow: inset 0 0 0 1px var(--green); }
+.template-card input { margin-top: .2rem; flex: none; }
+.template-card span { min-width: 0; }
+.template-card strong, .template-card small { display: block; }
+.template-card small { margin-top: .2rem; color: var(--muted); font-size: .78rem; font-weight: 400; line-height: 1.35; }
+.cover-fields { margin: 1rem 0 1.2rem; padding: .9rem 1rem; border: 1px solid var(--line); border-radius: .55rem; }
+.cover-fields summary { cursor: pointer; font-weight: 650; }
+.cover-fields > .hint { margin-bottom: 1rem; }
+.check-list { margin: 1rem 0 0; padding-left: 1.15rem; color: var(--muted); }
+.check-list li + li { margin-top: .35rem; }
+.jobs-section { margin-top: 2.2rem; }
+.section-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; margin-bottom: .8rem; }
+.job-row { display: flex; justify-content: space-between; gap: 1.25rem; align-items: center; }
+.job-row + .job-row { margin-top: .75rem; }
+.job-actions { display: flex; gap: .55rem; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+.job-actions form { margin: 0; }
+.status { display: inline-flex; align-items: center; min-height: 2rem; padding: .25rem .65rem; border-radius: 2rem; border: 1px solid var(--line); font-size: .8rem; font-weight: 700; }
+.status-queued { background: #f4f1dd; color: #6d5b16; }
+.status-running { background: #e7f0f8; color: #245a7a; }
+.status-succeeded { background: var(--tint); color: #15543c; }
+.status-failed { background: #fbe9e2; color: #852e23; }
+
 [hidden] { display: none !important; }
 @media (max-width: 46rem) {
-  .auth-layout, .workspace-grid, .edit-layout { grid-template-columns: minmax(0, 1fr); }
+  .auth-layout, .workspace-grid, .edit-layout, .document-layout { grid-template-columns: minmax(0, 1fr); }
   .auth-layout { gap: 1.6rem; padding-block: 2rem; }
   .intro { padding-top: 0; }
   .intro h1 { max-width: 16ch; font-size: clamp(2.8rem, 9vw, 4rem); }
   .section-nav { display: flex; position: static; flex-wrap: wrap; gap: .35rem 1rem; padding: 0; }
   .page-head { align-items: flex-start; flex-direction: column; }
+  .profile-actions, .job-row { align-items: flex-start; flex-direction: column; }
+  .job-actions { justify-content: flex-start; }
 }
 @media (max-width: 30rem) {
-  .fields { grid-template-columns: 1fr; }
+  .fields, .template-grid { grid-template-columns: 1fr; }
   .account, .brand { gap: .45rem; }
   .nav { flex-wrap: wrap; padding-block: .65rem; }
 }
