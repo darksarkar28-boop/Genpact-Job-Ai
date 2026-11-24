@@ -30,9 +30,13 @@ class DocumentWorkerSmokeTests(TestCase):
         self.assertEqual(job.status, DocumentJob.Status.SUCCEEDED, job.error)
         status = self.client.get(status_url).json()
         self.assertEqual(status["status"], "succeeded")
-        download = self.client.get(status["download_url"])
-        self.assertEqual(download.status_code, 200)
-        data = b"".join(download.streaming_content)
+        self.assertFalse(status["release_approved"])
+        self.assertNotIn("download_url", status)
+        locked = self.client.get(reverse("document_download", args=[job.pk]))
+        self.assertEqual(locked.status_code, 403)
+        artifact = artifact_file(job)
+        self.assertIsNotNone(artifact)
+        data = artifact.read_bytes()
         self.assertEqual(hashlib.sha256(data).hexdigest(), job.artifact_sha256)
         if job.output_format == DocumentJob.OutputFormat.PDF:
             preview = self.client.get(status["preview_url"])
@@ -46,30 +50,33 @@ class DocumentWorkerSmokeTests(TestCase):
         self.assertGreaterEqual(job.verification["pages"], 1)
         return job
 
-    def _verify_application_download(self, owner, profile, cv, cover):
+    def _approve_generated(self, owner, profile, cv_job, cover_job=None):
         self.client.force_login(owner)
-        fields = {
+        response = self.client.post(reverse("document_release_review"), {
+            "cv_job_id": cv_job.pk,
+            "cover_job_id": cover_job.pk if cover_job else "",
             "employer": "Example Labs",
             "profile_revision": profile.revision,
-            "visual_headings": "Skills\nExperience\nEducation",
+            "visual_headings": "Summary\nSkills\nExperience\nEducation",
             "keywords": json.dumps({"keywords": [{"term": "Python", "priority": "required"}]}),
+            "claims": "[]",
+            "company_citations": "[]",
             "confirm_visual": "on",
-        }
-        url = reverse("application_review")
-        with cv.open("rb") as cv_file, cover.open("rb") as cover_file:
-            reviewed = self.client.post(url, {**fields, "action": "review", "cv_pdf": cv_file, "cover_pdf": cover_file})
-        self.assertEqual(reviewed.status_code, 200, reviewed.context["report"])
-        self.assertTrue(reviewed.context["report"]["allowed"])
-        with cv.open("rb") as cv_file, cover.open("rb") as cover_file:
-            released = self.client.post(url, {
-                **fields, "action": "export", "token": reviewed.context["token"], "cv_pdf": cv_file, "cover_pdf": cover_file,
-            })
-        self.assertEqual(released.status_code, 200)
-        self.assertEqual(released["Content-Type"], "application/zip")
-        with zipfile.ZipFile(io.BytesIO(released.content)) as package:
-            self.assertEqual(package.read("validated_cv.pdf"), cv.read_bytes())
-            self.assertEqual(package.read("validated_cover_letter.pdf"), cover.read_bytes())
-            self.assertTrue(json.loads(package.read("verification_report.json"))["allowed"])
+        })
+        self.assertRedirects(response, reverse("documents"))
+        cv_job.refresh_from_db()
+        self.assertIn("release_approval", cv_job.verification)
+        if cover_job:
+            cover_job.refresh_from_db()
+            self.assertIn("release_approval", cover_job.verification)
+
+    def _assert_exact_final_download(self, job):
+        expected = artifact_file(job).read_bytes()
+        response = self.client.get(reverse("document_download", args=[job.pk]))
+        self.assertEqual(response.status_code, 200)
+        actual = b"".join(response.streaming_content)
+        self.assertEqual(actual, expected)
+        self.assertEqual(hashlib.sha256(actual).hexdigest(), job.artifact_sha256)
 
     def test_every_template_real_pdf_docx_stock_engines_and_layout_switching(self):
         owner = get_user_model().objects.create_user("worker_smoke")
@@ -114,9 +121,55 @@ class DocumentWorkerSmokeTests(TestCase):
             self.assertIn(b"Aptos", modern_xml)
             self.assertIn(b"Calibri", compact_xml)
 
-            self._verify_application_download(
-                owner, profile, artifact_file(cv_pdfs["classic"]), artifact_file(cover_pdf)
+            # PDF final downloads stay locked until the exact compiled application is approved.
+            self._approve_generated(owner, profile, cv_pdfs["classic"], cover_pdf)
+            self._assert_exact_final_download(cv_pdfs["classic"])
+            self._assert_exact_final_download(cover_pdf)
+
+            # A different account cannot reuse the owner's approval.
+            other = get_user_model().objects.create_user("worker_smoke_other")
+            self.client.force_login(other)
+            self.assertEqual(
+                self.client.get(reverse("document_download", args=[cv_pdfs["classic"].pk])).status_code,
+                404,
             )
+
+            # Editable DOCX uses the retained LibreOffice proof for review but releases
+            # the exact approved DOCX bytes.
+            self._approve_generated(owner, profile, cv_docxs["modern"], cover_docx)
+            self._assert_exact_final_download(cv_docxs["modern"])
+            self._assert_exact_final_download(cover_docx)
+
+            # Editing cover-letter text creates a distinct artifact and cannot inherit
+            # the prior approval. This is checked for both final formats.
+            edited_letter = letter + "\nI also use Python for internal analytics."
+            edited_cover_pdf = self._process(owner, profile, {
+                "document_type": "cover_letter", "output_format": "pdf", "template_key": "classic",
+                "cover_letter_body": edited_letter, "company": "Example Labs", "role": "Engineer",
+            })
+            edited_cover_docx = self._process(owner, profile, {
+                "document_type": "cover_letter", "output_format": "docx", "template_key": "clean",
+                "cover_letter_body": edited_letter, "company": "Example Labs", "role": "Engineer",
+            })
+            self.assertNotIn("release_approval", edited_cover_pdf.verification)
+            self.assertNotIn("release_approval", edited_cover_docx.verification)
+
+            # The supported edited example can be approved, and the owner then receives
+            # the exact generated files.
+            self._approve_generated(owner, profile, cv_pdfs["classic"], edited_cover_pdf)
+            self._assert_exact_final_download(edited_cover_pdf)
+            self._approve_generated(owner, profile, cv_docxs["modern"], edited_cover_docx)
+            self._assert_exact_final_download(edited_cover_docx)
+
+            # Approval is also bound to the current saved profile revision.
+            Profile.objects.filter(pk=profile.pk).update(revision=profile.revision + 1)
+            profile.refresh_from_db()
+            for approved_job in (
+                cv_pdfs["classic"], cover_pdf, cv_docxs["modern"], cover_docx,
+                edited_cover_pdf, edited_cover_docx,
+            ):
+                blocked = self.client.get(reverse("document_download", args=[approved_job.pk]))
+                self.assertEqual(blocked.status_code, 403)
 
             staging = Path(temporary) / ".staging"
             self.assertEqual(list(staging.iterdir()), [])
