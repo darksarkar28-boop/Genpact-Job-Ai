@@ -171,6 +171,9 @@ class PortalTests(TestCase):
         self.share(own)
         old = member.reviews.get()
         self.client.post(self.url("manage_member", member.pk), {"action": "assign", "cohorts": [self.b.pk]})
+        change = self.org.events.get(action="Changed cohort access")
+        self.assertEqual((change.actor_id, change.subject, change.detail),
+                         (self.admin.pk, self.candidate.username, "Engineering → Design"))
         old.refresh_from_db()
         self.assertIsNotNone(old.withdrawn_at)
         self.assertEqual(self.share(own).status_code, 409)

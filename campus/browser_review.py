@@ -1,4 +1,5 @@
 import os
+import re
 
 from django.contrib.auth import get_user_model
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
@@ -44,8 +45,8 @@ class BrowserCohortReview(StaticLiveServerTestCase):
                 for recipients, role in [("learner@example.test, spare@example.test", "Candidate"),
                                          ("mentor@example.test", "Mentor")]:
                     form.get_by_label("Recipient emails").fill(recipients)
-                    form.get_by_label("Role", exact=True).select_option(label=role)
-                    form.get_by_label("Cohort", exact=True).select_option(label="Engineering")
+                    form.get_by_role("combobox", name=re.compile(r"^Role\b")).select_option(label=role)
+                    form.get_by_role("combobox", name=re.compile(r"^Cohort\b")).select_option(label="Engineering")
                     form.get_by_role("button", name="Create invitations").click()
                 student_url = admin.get_by_role("link", name="Invitation for learner@example.test").get_attribute("href")
                 mentor_url = admin.get_by_role("link", name="Invitation for mentor@example.test").get_attribute("href")
@@ -65,8 +66,8 @@ class BrowserCohortReview(StaticLiveServerTestCase):
                 student.get_by_role("button", name="Save profile").click()
                 student.get_by_role("link", name="Campus", exact=True).click()
                 student.get_by_role("link", name="Example College").click()
-                student.get_by_label("Applications", exact=True).fill("2")
-                student.get_by_label("Interviews", exact=True).fill("1")
+                student.get_by_role("spinbutton", name=re.compile(r"^Applications\b")).fill("2")
+                student.get_by_role("spinbutton", name=re.compile(r"^Interviews\b")).fill("1")
                 student.get_by_role("button", name="Save progress").click()
                 submit_file(student, "Initial resume")
                 expect(student.get_by_role("heading", name="Revision 1")).to_be_visible()

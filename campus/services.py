@@ -33,8 +33,8 @@ def member_for(org, user, *roles):
     return get_object_or_404(members)
 
 
-def audit(org, actor, action, subject):
-    AuditEvent.objects.create(organization=org, actor=actor, action=action, subject=str(subject))
+def audit(org, actor, action, subject, detail=""):
+    AuditEvent.objects.create(organization=org, actor=actor, action=action, subject=str(subject), detail=detail)
 
 
 def pending(org):
@@ -77,7 +77,7 @@ def invite_batch(org_id, actor, emails, role, cohort_id):
         expires = timezone.now() + timedelta(days=7)
         for email in new_emails:
             invite = Invitation.objects.create(organization=org, cohort=cohort, role=role, email=email, expires_at=expires)
-            audit(org, actor, f"Invited {role}", email)
+            audit(org, actor, f"Invited {role}", email, cohort.name if cohort else "Organization-wide")
             created.append(invite)
         return created
 
@@ -105,7 +105,8 @@ def accept_invitation(invite_id, user):
         member.mentor_cohorts.set([invitation.cohort] if member.role == Role.MENTOR else [])
         invitation.accepted_at, invitation.accepted_by = timezone.now(), user
         invitation.save(update_fields=["accepted_at", "accepted_by"])
-        audit(org, user, f"Accepted {member.role} invitation", invitation.email)
+        audit(org, user, f"Accepted {member.role} invitation", invitation.email,
+              invitation.cohort.name if invitation.cohort_id else "Organization-wide")
         return member
 
 
@@ -129,6 +130,10 @@ def change_membership(org_id, actor, target_id, action, cohort_ids=()):
     with locked_organization(org_id) as org:
         member_for(org, actor, Role.ADMIN)
         target = get_object_or_404(org.members.select_related("user"), pk=target_id, active=True)
+        if target.role == Role.MENTOR:
+            prior = ", ".join(target.mentor_cohorts.values_list("name", flat=True)) or "No cohorts"
+        else:
+            prior = target.cohort.name if target.cohort_id else "Organization-wide"
         if action == "deactivate":
             if target.role == Role.ADMIN and org.members.filter(active=True, role=Role.ADMIN).count() == 1:
                 raise CampusError("The organization needs an active admin.")
@@ -136,7 +141,7 @@ def change_membership(org_id, actor, target_id, action, cohort_ids=()):
             target.active = False
             target.save(update_fields=["active"])
             target.mentor_cohorts.clear()
-            audit(org, actor, "Deactivated membership", target.user.username)
+            audit(org, actor, "Deactivated membership", target.user.username, f"{target.get_role_display()} · {prior}")
             return
         cohorts = list(org.cohorts.filter(pk__in=cohort_ids))
         if len(cohorts) != len(set(cohort_ids)):
@@ -151,7 +156,8 @@ def change_membership(org_id, actor, target_id, action, cohort_ids=()):
             target.save(update_fields=["cohort"])
         else:
             raise CampusError("Choose a valid cohort assignment for this member.")
-        audit(org, actor, "Changed cohort access", f"{target.user.username} → {', '.join(str(c.pk) for c in cohorts) or 'none'}")
+        updated = ", ".join(c.name for c in cohorts) or "No cohorts"
+        audit(org, actor, "Changed cohort access", target.user.username, f"{prior} → {updated}")
 
 
 def progress_counts(candidates):
