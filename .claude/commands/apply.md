@@ -343,7 +343,33 @@ Failures here are template-level problems: fix them in the `<CV_EXT>` source (e.
 > **Note:** A multi-word phrase reported missing may be a punctuation-spacing artifact between extractors (pypdf sometimes inserts spaces around punctuation that Poppler does not). Re-check against the other extractor before concluding the text is absent.
 
 
-**4. Clean up:** delete the extracted `.txt` file.
+**Automated literal keyword report (before the manual table):** Save the Step 1
+required/preferred keyword list to a temporary JSON file beside the extracted
+CV text. Do not invent missing terms or infer qualifications; optional aliases
+must be explicitly reviewed, and a synonym is not a literal ATS keyword hit:
+
+```json
+{"keywords": [{"term": "Python", "priority": "required"},
+              {"term": "Continuous integration", "priority": "preferred", "aliases": ["CI"]}]}
+```
+
+```bash
+python3 tools/ats_coverage.py --cv-text cv/main_<company>_<role>.txt \
+  --terms cv/main_<company>_<role>-terms.json \
+  --profile-text .claude/skills/job-application-assistant/01-candidate-profile.md
+```
+
+The report lists every term, priority, exact-versus-synonym status, and the
+**exact-match numerator and denominator** for each priority group. Use it as
+the starting point for the manual table above, not as proof of a skill:
+`missing (unverified)` must be reviewed before declaring a genuine gap,
+and `missing (have it)` is only a textual lead to check against confirmed
+evidence. `--json` prints the same data for integrations. If extraction fails,
+do not claim the automated report passed; use the documented degraded/manual
+check and report that clearly. See `tools/README_ATS_COVERAGE.md`.
+
+
+**4. Clean up:** delete the extracted `.txt` file **and the temporary `-terms.json` file**.
 
 ### 5e. Clean up build artifacts
 
