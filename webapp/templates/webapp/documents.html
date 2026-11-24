@@ -48,7 +48,15 @@
               <label class="template-card">
                 <input type="radio" name="template_key" value="{{ item.key }}"
                   {% if form_data.template_key == item.key or not form_data.template_key and item.key == "classic" %}checked{% endif %}>
-                <span><strong>{{ item.label }}</strong><small>{{ item.description }}</small></span>
+                <span>
+                  <strong>{{ item.label }}</strong>
+                  <small>{{ item.description }}</small>
+                  {% if item.review %}
+                    <small class="reviewed">Recruiter-tested · {{ item.review.reviewer_label }}</small>
+                  {% else %}
+                    <small class="pending-review">Recruiter review pending</small>
+                  {% endif %}
+                </span>
               </label>
             {% endfor %}
           </div>
@@ -63,7 +71,10 @@
           </div>
           <div class="field"><label for="cover_letter_body">Letter text</label><textarea id="cover_letter_body" name="cover_letter_body" rows="10" maxlength="20000">{{ form_data.cover_letter_body|default:'' }}</textarea></div>
         </details>
-        <button class="primary" type="submit">Queue export</button>
+        <div class="export-actions">
+          <button class="secondary" type="submit" formaction="{% url 'document_preview' %}">Preview source</button>
+          <button class="primary" type="submit">Queue export</button>
+        </div>
       </form>
     </section>
 
@@ -73,12 +84,53 @@
       <ul class="check-list">
         <li>Single-column source order</li>
         <li>PDF text extraction and page count</li>
-        <li>DOCX text extraction</li>
+        <li>DOCX text extraction and LibreOffice pagination proof</li>
         <li>Email and phone preservation</li>
         <li>Artifact SHA-256 recorded</li>
       </ul>
     </aside>
   </div>
+
+  {% if preview %}
+    <section class="preview-section" aria-labelledby="preview-heading">
+      <div class="section-heading">
+        <div><h2 id="preview-heading">Pre-download preview</h2><p class="hint">{{ preview.template.label }} · {{ preview.output_format|upper }} · no job created yet</p></div>
+      </div>
+      <article class="paper-preview preview-{{ preview.template_key }}">
+        <header class="preview-head {% if preview.template.name_align == 'center' %}centered{% endif %}">
+          <h3>{{ preview.snapshot.profile.full_name }}</h3>
+          <p>
+            {% if preview.snapshot.profile.email %}{{ preview.snapshot.profile.email }}{% endif %}
+            {% if preview.snapshot.profile.phone %} · {{ preview.snapshot.profile.phone }}{% endif %}
+            {% if preview.snapshot.profile.location %} · {{ preview.snapshot.profile.location }}{% endif %}
+          </p>
+        </header>
+        {% if preview.document_type == "cover_letter" %}
+          {% if preview.snapshot.extra.role or preview.snapshot.extra.company %}
+            <h4>{{ preview.snapshot.extra.role }}{% if preview.snapshot.extra.role and preview.snapshot.extra.company %} — {% endif %}{{ preview.snapshot.extra.company }}</h4>
+          {% endif %}
+          <div class="preview-body preserve">{{ preview.snapshot.extra.body }}</div>
+        {% else %}
+          {% if preview.snapshot.profile.summary %}<section><h4>Summary</h4><p class="preserve">{{ preview.snapshot.profile.summary }}</p></section>{% endif %}
+          {% if preview.snapshot.profile.skills %}<section><h4>Skills</h4><p>{{ preview.snapshot.profile.skills|join:", " }}</p></section>{% endif %}
+          {% if preview.snapshot.profile.experience %}
+            <section><h4>Experience</h4>
+            {% for row in preview.snapshot.profile.experience %}
+              <div class="preview-entry"><strong>{{ row.title }}{% if row.title and row.employer %} · {% endif %}{{ row.employer }}</strong>{% if row.dates %}<span>{{ row.dates }}</span>{% endif %}<p class="preserve">{{ row.details }}</p></div>
+            {% endfor %}
+            </section>
+          {% endif %}
+          {% if preview.snapshot.profile.education %}
+            <section><h4>Education</h4>
+            {% for row in preview.snapshot.profile.education %}
+              <div class="preview-entry"><strong>{{ row.school }}{% if row.school and row.degree %} · {% endif %}{{ row.degree }}</strong>{% if row.dates %}<span>{{ row.dates }}</span>{% endif %}<p class="preserve">{{ row.details }}</p></div>
+            {% endfor %}
+            </section>
+          {% endif %}
+        {% endif %}
+      </article>
+    </section>
+  {% endif %}
 
   <section class="jobs-section">
     <div class="section-heading"><h2>Recent exports</h2><span class="hint">Newest first</span></div>
@@ -88,6 +140,7 @@
           <p class="kicker">#{{ job.pk }} · {{ job.get_document_type_display }} · {{ job.output_format|upper }}</p>
           <h3>{{ job.template_key|title }} template</h3>
           <p class="hint">Profile revision {{ job.profile_revision }} · attempt {{ job.attempt }}</p>
+          {% if job.verification.pages %}<p class="hint">{{ job.verification.pages }} page{{ job.verification.pages|pluralize }} · {{ job.verification.pagination_source }}</p>{% endif %}
           {% if job.error %}<p class="job-error">{{ job.error }}</p>{% endif %}
           {% if job.verification.warnings %}
             {% for warning in job.verification.warnings %}<p class="hint">{{ warning }}</p>{% endfor %}
@@ -96,7 +149,7 @@
         <div class="job-actions">
           <span class="status status-{{ job.status }}">{{ job.get_status_display }}</span>
           {% if job.status == "succeeded" %}
-            {% if job.output_format == "pdf" %}<a class="secondary" href="{% url 'document_download' job.pk %}?preview=1" target="_blank" rel="noopener">Preview</a>{% endif %}
+            {% if job.output_format == "pdf" %}<a class="secondary" href="{% url 'document_download' job.pk %}?preview=1" target="_blank" rel="noopener">Open PDF</a>{% endif %}
             <a class="primary" href="{% url 'document_download' job.pk %}">Download</a>
           {% elif job.status == "failed" %}
             <form action="{% url 'document_retry' job.pk %}" method="post">{% csrf_token %}<button class="secondary" type="submit">Retry</button></form>
