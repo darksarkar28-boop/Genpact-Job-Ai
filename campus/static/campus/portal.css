@@ -1,0 +1,20 @@
+.campus-grid, .campus-stats { display: grid; gap: 1rem; }
+.campus-grid { grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr)); align-items: start; }
+.campus-section, .campus-top { margin-top: 1.4rem; }
+.campus-narrow { max-width: 35rem; }
+.campus-heading, .campus-controls, .campus-list li { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem 1rem; }
+.campus-heading, .campus-list li { justify-content: space-between; }
+.card p, .card form, .card h3, .campus-controls { margin-top: .8rem; }
+.card form p { margin: .65rem 0; }
+.card form .helptext, .campus-list span, .campus-list time, .campus-heading time { display: block; color: var(--muted); font-size: .87rem; }
+.card select { max-width: 100%; font: inherit; color: var(--ink); background: var(--card); border: 1px solid #9baea2; border-radius: .4rem; padding: .4rem; }
+.card form button { margin: .6rem .4rem 0 0; }
+.campus-stats { grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); margin: 1.3rem 0 .7rem; }
+.campus-stats div { padding: .75rem; border-left: 3px solid var(--green); background: var(--tint); }
+.campus-stats dt { color: var(--muted); font-size: .88rem; }
+.campus-stats dd { margin: .15rem 0 0; font: 1.8rem var(--display); }
+.campus-list { padding: 0; margin-bottom: 0; list-style: none; }
+.campus-list li { padding: .7rem 0; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
+.member-actions { max-width: 100%; }
+.member-actions summary { color: var(--green); cursor: pointer; }
+.member-actions form { display: grid; gap: .4rem; }

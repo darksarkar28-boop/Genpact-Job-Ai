@@ -8,6 +8,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import F
 from django.shortcuts import redirect, render
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
@@ -27,8 +28,11 @@ def home(request):
 @never_cache
 @require_http_methods(["GET", "POST"])
 def signup(request):
+    next_url = request.POST.get("next") or request.GET.get("next", "")
+    if not next_url.startswith("/") or not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        next_url = ""
     if request.user.is_authenticated:
-        return redirect("workspace")
+        return redirect(next_url or "workspace")
     form = UserCreationForm(request.POST if request.method == "POST" else None)
     if request.method == "POST" and form.is_valid():
         try:
@@ -40,8 +44,8 @@ def signup(request):
             form.add_error("username", "This username is already in use.")
         else:
             login(request, user)
-            return redirect("workspace")
-    return render(request, "webapp/signup.html", {"form": form})
+            return redirect(next_url or "workspace")
+    return render(request, "webapp/signup.html", {"form": form, "next": next_url})
 
 
 def _owned_profile(request):

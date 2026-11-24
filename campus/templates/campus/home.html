@@ -1,0 +1,13 @@
+{% extends "campus/base.html" %}
+{% block title %}Campus workspaces{% endblock %}
+{% block content %}
+<header class="page-head"><div><h1>Campus workspaces</h1></div></header>
+<div class="campus-grid">
+  {% for m in memberships %}
+    <article class="card"><h2><a href="{% url 'campus:dashboard' m.organization.slug %}">{{ m.organization.name }}</a></h2>
+      <p>{{ m.get_role_display }}{% if m.cohort %} · {{ m.cohort.name }}{% endif %}</p></article>
+  {% empty %}
+    <div class="card"><h2>Join your organization</h2><p>Open the private invitation link from your placement team, bootcamp or coach to join a cohort.</p></div>
+  {% endfor %}
+</div>
+{% endblock %}
