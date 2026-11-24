@@ -86,6 +86,8 @@ After presenting the evaluation, ask the user:
 
 ## Step 2: DRAFTER - Draft CV + Cover Letter
 
+**Configured model routing:** after Step 1 and the user's explicit consent to external processing, when `JOB_AI_MODEL_CONFIG` is set use `python -m tools.routed_workflows apply --consent` with stdin JSON (`profile`: confirmed facts, `job`: object with `key` and integrity-gated posting `text`, optional verified `employer_id`). This runs frontier draft and review calls and returns reviewed plain-text suggestions, not executable code. Apply only grounded text to the existing templates; do not run generated commands. Treat returned research leads and source_checks as unverified until independently evaluated, independently check their sources in Step 3 and retain every compilation and grounding check below. Do not silently retry using an unbudgeted model on routing failure. Unconfigured installations retain the existing workflow.
+
 You already have `01-candidate-profile.md` and `04-job-evaluation.md` in context from Step 1. **Do not re-read them.**
 
 Read only the reference files you do not yet have:
@@ -131,7 +133,7 @@ Write both files to disk. Keep the exact text of both drafts in working memory �
 
 ## Step 3: REVIEWER - Research & Critique
 
-Use the **Agent tool** to spawn the reviewer as **`application-reviewer`** (`subagent_type: application-reviewer`, the shipped definition in `.claude/agents/application-reviewer.md`: it can read, search and fetch but not edit or write, so every edit and the company research come back as text for you to apply). The reviewer gets a fresh context, so pass the drafts **inline in the prompt** below (do not make the reviewer Read them). Scope the reviewer's file reads to content-critique essentials only — the reviewer does not need the template structure files (`05`, `06`) to critique content, since those govern structural/toolchain concerns the drafter already applied.
+For the configured path, use the already-returned frontier reviewer findings instead of dispatching a second unbudgeted reviewer; perform the independent source verification and grounding audit below yourself. For the legacy path, use the **Agent tool** to spawn the reviewer as **`application-reviewer`** (`subagent_type: application-reviewer`, the shipped definition in `.claude/agents/application-reviewer.md`: it can read, search and fetch but not edit or write, so every edit and the company research come back as text for you to apply). The reviewer gets a fresh context, so pass the drafts **inline in the prompt** below (do not make the reviewer Read them). Scope the reviewer's file reads to content-critique essentials only — the reviewer does not need the template structure files (`05`, `06`) to critique content, since those govern structural/toolchain concerns the drafter already applied.
 
 Replace `<COMPANY>`, `<ROLE>`, `<INSERT_JOB_POSTING_TEXT_HERE>`, `<INSERT_CV_DRAFT_HERE>`, and `<INSERT_COVER_LETTER_DRAFT_HERE>` with actual values before dispatching.
 
@@ -343,7 +345,33 @@ Failures here are template-level problems: fix them in the `<CV_EXT>` source (e.
 > **Note:** A multi-word phrase reported missing may be a punctuation-spacing artifact between extractors (pypdf sometimes inserts spaces around punctuation that Poppler does not). Re-check against the other extractor before concluding the text is absent.
 
 
-**4. Clean up:** delete the extracted `.txt` file.
+**Automated literal keyword report (before the manual table):** Save the Step 1
+required/preferred keyword list to a temporary JSON file beside the extracted
+CV text. Do not invent missing terms or infer qualifications; optional aliases
+must be explicitly reviewed, and a synonym is not a literal ATS keyword hit:
+
+```json
+{"keywords": [{"term": "Python", "priority": "required"},
+              {"term": "Continuous integration", "priority": "preferred", "aliases": ["CI"]}]}
+```
+
+```bash
+python3 tools/ats_coverage.py --cv-text cv/main_<company>_<role>.txt \
+  --terms cv/main_<company>_<role>-terms.json \
+  --profile-text .claude/skills/job-application-assistant/01-candidate-profile.md
+```
+
+The report lists every term, priority, exact-versus-synonym status, and the
+**exact-match numerator and denominator** for each priority group. Use it as
+the starting point for the manual table above, not as proof of a skill:
+`missing (unverified)` must be reviewed before declaring a genuine gap,
+and `missing (have it)` is only a textual lead to check against confirmed
+evidence. `--json` prints the same data for integrations. If extraction fails,
+do not claim the automated report passed; use the documented degraded/manual
+check and report that clearly. See `tools/README_ATS_COVERAGE.md`.
+
+
+**4. Clean up:** delete the extracted `.txt` file **and the temporary `-terms.json` file**.
 
 ### 5e. Clean up build artifacts
 
@@ -355,6 +383,30 @@ After the final clean compile (and after 5b-5d have passed), delete the intermed
   ```
 - **Custom template whose compile command redirects to `build/`:** also `rm -rf cv/build cover_letters/build` (`/add-template` Step 4 already says `/apply` must delete it).
 - **Zero-artifact toolchain (e.g. `typst compile`):** nothing to delete.
+
+### 5f. Mandatory final export release gate (authenticated web app)
+
+The PDF text-layer and grounding review above must finish **before** releasing
+an application. The generated files are still drafts until the server accepts
+the final binary content. Start the Django web application, sign in to the
+candidate's own profile and visit `/applications/review/` from the workspace.
+
+Upload the **exact final CV PDF and cover PDF**, select the verified employer,
+give the role's Step 1 keyword list, the visual heading order, and any
+company-specific factual claims with independently verifiable public HTTPS
+sources. The server requires confirmed profile evidence, detects unsupported
+numeric claims / dates / degrees / employers, re-extracts both PDF text layers,
+checks headings, verifies company claim sources and reports literal keyword
+coverage. After a passing review, re-upload the *same files* and explicitly
+export. The server re-checks the bytes and current profile revision on this
+second request and issues `verified_application.zip` only if all checks pass.
+
+**Never treat a CLI-generated PDF as an approved application export without
+a successful backend release.** If the backend is unavailable or the review
+fails, disclose the blocked checks and leave the artifact as a draft. A
+candidate may correct facts only by updating their confirmed profile and
+rerunning the audit; do not silently waive unsupported claims. For use and
+limits see `tools/README_ATS_COVERAGE.md`.
 
 ---
 

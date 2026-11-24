@@ -133,7 +133,8 @@
   {% endif %}
 
   <section class="jobs-section">
-    <div class="section-heading"><h2>Recent exports</h2><span class="hint">Newest first</span></div>
+    <div class="section-heading"><h2>Recent drafts</h2><span class="hint">Newest first</span></div>
+    <p>When your CV and cover letter are ready, <a href="{% url 'application_review' %}">review the final PDFs</a> for ATS coverage and factual accuracy.</p>
     {% for job in jobs %}
       <article class="card job-row">
         <div>
@@ -149,8 +150,8 @@
         <div class="job-actions">
           <span class="status status-{{ job.status }}">{{ job.get_status_display }}</span>
           {% if job.status == "succeeded" %}
-            {% if job.output_format == "pdf" %}<a class="secondary" href="{% url 'document_download' job.pk %}?preview=1" target="_blank" rel="noopener">Open PDF</a>{% endif %}
-            <a class="primary" href="{% url 'document_download' job.pk %}">Download</a>
+            {% if job.output_format == "pdf" %}<a class="secondary" href="{% url 'document_download' job.pk %}?preview=1" target="_blank" rel="noopener">Preview draft PDF</a>{% endif %}
+            <a class="primary" href="{% url 'document_download' job.pk %}">Download draft</a>
           {% elif job.status == "failed" %}
             <form action="{% url 'document_retry' job.pk %}" method="post">{% csrf_token %}<button class="secondary" type="submit">Retry</button></form>
           {% endif %}

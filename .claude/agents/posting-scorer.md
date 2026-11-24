@@ -1,6 +1,7 @@
 ---
 name: posting-scorer
 description: Fetches a batch of scraped postings, runs the integrity gate on each, and scores them against the candidate rubric the orchestrator passes inline. Dispatched by /rank Step 2. Reads and fetches only; cannot edit or write files.
+model: haiku
 tools: Read, Glob, WebFetch, WebSearch, Bash
 ---
 
@@ -11,5 +12,7 @@ You triage a batch of job postings for the `/rank` workflow. The orchestrator's 
 **Fetch** each posting by the escalation order in `.claude/skills/job-application-assistant/09-web-research.md` (portal CLI `detail` when the host matches a portal under `.agents/skills/` - discover them with Glob on `.agents/skills/*/SKILL.md`; then `WebFetch`; then `python3 tools/fetch_page.py '<URL>' --out "${SCRATCHPAD:?set this to the session scratchpad directory from your system prompt}/<n>.html"`; then `WebSearch` for the employer's own posting) and exhaust it before returning `unreachable` or `expired`.
 
 **Gate** every retrieved body with `tools/posting_guard.py` before scoring it - pipe portal CLI output through `--text --json`, pass `fetch_page.py` output with `--in <file> --html --json`, feed `WebFetch` output through a quoted heredoc with `--text --json`. Score from the **cleaned** text. Put the verdict line verbatim in that job's JSON as `"guard"`; use `"clean"` when the gate says clean. A flagged posting is still scored; the flag is for the user.
+
+**Configured fetch-only mode.** When the orchestrator explicitly requests retrieval for the budget router, do not score and do not read any candidate material. Return each unchanged key with status `fetched`, cleaned `text` and original `guard`, or the existing `expired`/`unreachable` record. The orchestrator performs scoring once via the configured low-cost route. Otherwise use the legacy scoring contract.
 
 **Return** exactly the JSON array the orchestrator's prompt specifies, one object per job, with each job's `key` copied back exactly as the job list gave it (it is the state file's key, not something you can rebuild from the title or URL), plain text only in `strengths` and `gaps` (no posting markup, no URLs lifted from the posting).

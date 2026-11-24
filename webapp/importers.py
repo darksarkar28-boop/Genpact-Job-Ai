@@ -2,6 +2,7 @@
 import csv
 import io
 import json
+import logging
 import re
 import subprocess
 import sys
@@ -132,7 +133,7 @@ def _linkedin(raw):
     return draft
 
 
-def parse_document(kind, raw):
+def parse_document(kind, raw, *, ai=False):
     if kind not in SUPPORTED_TYPES or not 0 < len(raw) <= MAX_UPLOAD_BYTES:
         raise ImportProblem("Choose a nonempty PDF, DOCX or LinkedIn ZIP up to 8 MiB.")
     if kind == "zip":
@@ -144,6 +145,9 @@ def parse_document(kind, raw):
         if len(text) > MAX_TEXT:
             raise ImportProblem("This document has too much text. Choose a shorter résumé.")
         draft = parse_resume(text)
+        if ai:
+            from .ai_extract import extract_draft
+            draft = extract_draft(text, draft)
     if not any(draft.values()):
         raise ImportProblem("No profile fields were found. Try another export or enter your details manually.")
     draft = merge_profiles({}, draft)
@@ -152,17 +156,35 @@ def parse_document(kind, raw):
     return draft
 
 
-def read_upload(upload):
+def read_upload(upload, *, ai=False):
     # Parse off the web process so an expensive or malformed document cannot tie it up indefinitely.
     kind = upload.name.rsplit(".", 1)[-1].lower()
-    try:
-        run = subprocess.run(
-            [sys.executable, "-m", "webapp.importers", kind], input=upload.read(MAX_UPLOAD_BYTES + 1),
-            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, cwd=Path(__file__).resolve().parents[1],
-            timeout=12, check=False,
-        )
-    except subprocess.TimeoutExpired:
-        raise ImportProblem("The document took too long to read. Try a shorter copy.") from None
+    raw = upload.read(MAX_UPLOAD_BYTES + 1)
+    attempts = (True, False) if ai else (False,)
+    for use_ai in attempts:
+        command = [sys.executable, "-m", "webapp.importers", kind]
+        if use_ai:
+            command.append("--ai")
+        try:
+            run = subprocess.run(
+                command, input=raw, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE if use_ai else subprocess.DEVNULL,
+                cwd=Path(__file__).resolve().parents[1], timeout=45 if use_ai else 12, check=False,
+            )
+            break
+        except subprocess.TimeoutExpired:
+            # A slow provider must not prevent review of a locally readable document.
+            if not use_ai:
+                raise ImportProblem("The document took too long to read. Try a shorter copy.") from None
+    if ai and run.stderr:
+        for line in run.stderr.splitlines():
+            if line.startswith(b"JOB_AI_USAGE model_usage "):
+                try:
+                    event = json.loads(line[len(b"JOB_AI_USAGE model_usage "):])
+                    from tools.model_service import usage_event
+                    usage_event(event)
+                except (ValueError, TypeError):
+                    pass
     if run.returncode == 2:
         raise ImportProblem(json.loads(run.stdout))
     if run.returncode != 0:
@@ -170,7 +192,14 @@ def read_upload(upload):
     return json.loads(run.stdout)
 
 
-def _worker(kind):
+def _worker(kind, *, ai=False):
+    if ai:
+        logger = logging.getLogger("jobai.model_usage")
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("JOB_AI_USAGE %(message)s"))
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+        logger.propagate = False
     if sys.platform.startswith("linux"):
         import resource
         # Keep the stricter limit if the operator already set one.
@@ -179,7 +208,7 @@ def _worker(kind):
             cap = min([value] + [n for n in (soft, hard) if n != resource.RLIM_INFINITY])
             resource.setrlimit(limit, (cap, hard))
     try:
-        profile = parse_document(kind, sys.stdin.buffer.read(MAX_UPLOAD_BYTES + 1))
+        profile = parse_document(kind, sys.stdin.buffer.read(MAX_UPLOAD_BYTES + 1), ai=ai)
     except ImportProblem as exc:
         print(json.dumps(str(exc)))
         return 2
@@ -191,4 +220,4 @@ def _worker(kind):
 
 
 if __name__ == "__main__":
-    raise SystemExit(_worker(sys.argv[1]))
+    raise SystemExit(_worker(sys.argv[1], ai="--ai" in sys.argv[2:]))

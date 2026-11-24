@@ -7,5 +7,7 @@
     {{ upload.document }}
     {{ upload.document.errors }}
   </div>
+  <p>{{ upload.ai_assist }} {{ upload.ai_assist.label_tag }}</p>
+  <p class="hint">Off by default. If enabled, PDF/DOCX text may be processed by an external AI provider; review all extracted fields before saving. LinkedIn ZIP imports remain local.</p>
   <button type="submit" class="primary">Review import</button>
 </form>

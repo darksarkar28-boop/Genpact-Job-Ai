@@ -129,6 +129,7 @@ class DocumentExportTests(TestCase):
     def test_gallery_queue_deduplicates_and_pdf_can_be_previewed(self):
         page = self.client.get(reverse("documents"))
         self.assertEqual(page.status_code, 200)
+        self.assertContains(page, reverse("application_review"))
         self.assertEqual(len(TEMPLATES), 8)
         for template in TEMPLATES:
             self.assertContains(page, template["label"])

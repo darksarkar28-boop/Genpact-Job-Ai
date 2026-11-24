@@ -71,7 +71,8 @@ SESSION_COOKIE_SECURE = CSRF_COOKIE_SECURE = SECURE_SSL_REDIRECT = not DEBUG
 if not DEBUG and os.environ.get("JOBWEB_TRUST_PROXY_TLS") == "1":
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_REFERRER_POLICY = "same-origin"
-DATA_UPLOAD_MAX_NUMBER_FILES = 1
+# Final review accepts a CV and a cover letter in the same request.
+DATA_UPLOAD_MAX_NUMBER_FILES = 2
 FILE_UPLOAD_MAX_MEMORY_SIZE = 512 * 1024
 
 # Document exports are deliberately separate from tracked workspace files.
@@ -84,3 +85,10 @@ DOCUMENT_WORKER_IMAGE = os.environ.get(
 DOCUMENT_WORKER_TIMEOUT = int(os.environ.get("JOBWEB_DOCUMENT_WORKER_TIMEOUT", "90"))
 DOCUMENT_WORKER_MEMORY = os.environ.get("JOBWEB_DOCUMENT_WORKER_MEMORY", "768m")
 DOCUMENT_WORKER_CPUS = os.environ.get("JOBWEB_DOCUMENT_WORKER_CPUS", "1.0")
+
+# Model telemetry contains only configured route labels, usage counts and estimated cost.
+LOGGING = {
+    "version": 1, "disable_existing_loggers": False,
+    "handlers": {"model_usage": {"class": "logging.StreamHandler"}},
+    "loggers": {"jobai.model_usage": {"handlers": ["model_usage"], "level": "INFO", "propagate": False}},
+}
