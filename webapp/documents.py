@@ -171,6 +171,38 @@ def artifact_file(job: DocumentJob):
     return candidate if candidate.is_file() else None
 
 
+def review_pdf_file(job: DocumentJob):
+    """Return the exact PDF reviewed by the application gate.
+
+    PDFs review themselves. DOCX exports retain the worker's LibreOffice proof
+    PDF privately so the final editable file can be approved against its
+    rendered text/order without exposing the proof as a download.
+    """
+    if job.output_format == DocumentJob.OutputFormat.PDF:
+        return artifact_file(job)
+    relative_name = (job.verification or {}).get("review_pdf_name")
+    if not relative_name:
+        return None
+    root = Path(settings.DOCUMENT_EXPORT_ROOT).resolve()
+    candidate = (root / relative_name).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return None
+    return candidate if candidate.is_file() else None
+
+
+def release_approval_matches(job: DocumentJob, user_id: int, profile_revision: int) -> bool:
+    approval = (job.verification or {}).get("release_approval") or {}
+    return bool(
+        job.status == DocumentJob.Status.SUCCEEDED
+        and job.artifact_sha256
+        and approval.get("user_id") == user_id
+        and approval.get("profile_revision") == profile_revision
+        and approval.get("artifact_sha256") == job.artifact_sha256
+    )
+
+
 _LATEX_ESCAPE = str.maketrans({
     "\\": r"\textbackslash{}",
     "&": r"\&",
@@ -537,7 +569,15 @@ def process_claimed_job(job: DocumentJob):
             destination.mkdir(mode=0o700, parents=True, exist_ok=True)
             final_name = f"{job.document_type}-{job.template_key}.{job.output_format}"
             final_path = destination / final_name
+            proof = output.with_suffix(".pdf") if job.output_format == DocumentJob.OutputFormat.DOCX else None
             shutil.move(str(output), final_path)
+            if proof is not None:
+                if not proof.is_file():
+                    raise DocumentProblem("The DOCX review proof is unavailable.")
+                proof_path = destination / f"{job.document_type}-{job.template_key}.review.pdf"
+                shutil.move(str(proof), proof_path)
+                verification["review_pdf_name"] = str(proof_path.relative_to(export_root))
+            verification.pop("release_approval", None)
             verification["sha256"] = digest
             job.status = DocumentJob.Status.SUCCEEDED
             job.error = ""
