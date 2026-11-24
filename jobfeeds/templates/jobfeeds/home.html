@@ -1,0 +1,31 @@
+{% extends "webapp/base.html" %}
+{% block title %}Job feeds{% endblock %}
+{% block content %}
+<div class="page-head"><div><p class="kicker">Job discovery</p><h1>Ranked job feeds</h1>
+<p class="lead">Browse sourced opportunities and set your local morning email digest.</p></div></div>
+<div class="workspace-grid">
+<section class="card stack"><h2>Preferences</h2>
+<form method="post">{% csrf_token %}{{ form.as_p }}<button type="submit">Save preferences</button></form>
+{% if preference.verified %}<p>Digest email verified.</p>{% elif preference.email %}
+<form method="post" action="{% url 'jobfeeds:verify_send' %}">{% csrf_token %}<button type="submit" {% if not mail_enabled %}disabled{% endif %}>Send email verification</button></form>{% endif %}
+{% if not mail_enabled %}<p class="notice">Email delivery is unavailable until the operator configures SMTP.</p>{% endif %}
+<h3>Recent delivery attempts</h3>
+{% for delivery in deliveries %}<p>{{ delivery.local_date }} — {{ delivery.status }}</p>{% empty %}<p class="hint">No delivery attempts yet.</p>{% endfor %}
+<p class="hint">One delivery attempt per local day. Uncheck the digest and save to opt out.</p>
+</section>
+<section class="card stack"><h2>Matching opportunities</h2>
+<p class="hint">Coverage counts confirmed profile skills found in the title or description. It is not a hiring probability. Only active, recently observed jobs are listed.</p>
+{% for item in matches %}
+<article><h3>{{ item.job.title }}</h3><p>{{ item.job.employer }} · {{ item.job.location }} · {{ item.job.region }}</p>
+<p class="hint">Source: {{ item.job.source.provider }} · ID: {{ item.job.external_id }}<br>
+Posted: {{ item.job.posted_at|default:"Not supplied" }} · Last seen: {{ item.job.last_seen }}</p>
+{% if item.denominator %}<p>Keyword coverage: {{ item.score }}% ({{ item.matched|length }}/{{ item.denominator }})</p><p>{{ item.matched|join:", "|default:"No matched skills" }}</p>{% else %}<p>Coverage unavailable — save confirmed skills in your master profile.</p>{% endif %}
+<a href="{{ item.job.url }}" target="_blank" rel="noopener noreferrer">Open source application</a></article>
+{% empty %}<p>No matching active postings. Adjust filters or check the source status below.</p>{% endfor %}
+</section></div>
+<section class="card stack"><h2>Provider availability</h2>
+{% for provider in providers %}<article><h3>{{ provider.provider|title }}</h3>
+{% for source in provider.sources %}<p>{{ source.label }} — {{ source.status }} · Last complete refresh: {{ source.last_success|default:"Never" }} · Invalid rows: {{ source.invalid_count }}</p>
+{% empty %}<p>{{ provider.fallback }}</p>{% endfor %}</article>{% endfor %}
+</section>
+{% endblock %}
