@@ -169,8 +169,8 @@ def candidate_findings(document, profile, claim_list, externally_verified=""):
             findings.append(f"Candidate claim #{i + 1} needs claim and evidence text")
             continue
         claim, quote = entry["claim"].strip(), entry["evidence"].strip()
-        if not claim or not quote or not has_term(normalized(document), claim) or not has_term(evidence, quote):
-            findings.append(f"Candidate claim #{i + 1} is not present in the draft or confirmed profile evidence")
+        if not has_term(normalized(document), claim) or not has_term(evidence, quote) or not has_term(normalized(quote), claim):
+            findings.append(f"Candidate claim #{i + 1} needs matching wording in the draft and its confirmed evidence: {claim[:160]}")
     return list(dict.fromkeys(findings))
 
 

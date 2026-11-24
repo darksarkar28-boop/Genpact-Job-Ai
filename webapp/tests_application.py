@@ -257,6 +257,24 @@ class BackendReviewTests(TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertContains(response, "Candidate claim", status_code=422)
 
+    def test_declared_claim_requires_a_quote_that_supports_that_claim(self):
+        claim = "Designed municipal transit infrastructure."
+        response = self.client.post(reverse("application_review"), self.post_data(
+            lines=[*CV_LINES, claim],
+            extra={"claims": json.dumps([{"claim": claim, "evidence": "Data Engineer"}])},
+        ))
+        self.assertEqual(response.status_code, 422)
+        self.assertContains(response, claim, status_code=422)
+        self.assertFalse(response.context["token"])
+
+        supported = self.client.post(reverse("application_review"), self.post_data(extra={
+            "claims": json.dumps([{
+                "claim": "Improved throughput by 25%", "evidence": "Improved throughput by 25% for 50 clients.",
+            }]),
+        }))
+        self.assertEqual(supported.status_code, 200)
+        self.assertTrue(supported.context["report"]["allowed"])
+
 
 class PureAuditTests(TestCase):
     def test_company_source_fetch_must_actually_support_the_claim(self):

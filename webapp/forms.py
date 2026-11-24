@@ -80,7 +80,8 @@ class ApplicationReviewForm(forms.Form):
     claims = forms.CharField(
         label="Additional candidate claim-to-evidence pairs (JSON, optional)",
         initial="[]", required=False, max_length=32768,
-        help_text='[{"claim":"exact CV wording","evidence":"exact quote from saved profile"}]',
+        help_text='Use the exact wording shared by the document and the saved profile. '
+                  '[{"claim":"quoted claim","evidence":"longer saved passage containing the quoted claim"}]',
         widget=forms.Textarea(attrs={"rows": 3}),
     )
     company_citations = forms.CharField(
