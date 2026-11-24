@@ -10,5 +10,6 @@ urlpatterns = [
     path("accounts/logout/", auth.LogoutView.as_view(), name="logout"),
     path("profile/", views.workspace, name="workspace"),
     path("profile/import/", views.import_profile, name="import"),
+    path("research/company/", views.company_research, name="company-research"),
     path("profile/edit/", views.edit_profile, name="edit"),
 ]
