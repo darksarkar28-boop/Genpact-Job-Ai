@@ -1,0 +1,18 @@
+{% extends "campus/base.html" %}
+{% block title %}Join {{ invitation.organization.name }}{% endblock %}
+{% block content %}
+<header class="page-head"><div><h1>Join {{ invitation.organization.name }}</h1></div></header>
+<section class="card campus-narrow">
+  <p>{{ invitation.get_role_display }}{% if invitation.cohort %} · {{ invitation.cohort.name }}{% endif %}</p>
+  <p class="hint">Invitation expires {{ invitation.expires_at|date:"M j, Y" }}.</p>
+  {% if user.is_authenticated %}
+    <form method="post">{% csrf_token %}<input type="hidden" name="invitation" value="{{ invitation.pk }}">
+      <p>You are signed in as <strong>{{ user.username }}</strong>.</p>
+      <button class="primary">Accept invitation</button>
+    </form>
+  {% else %}
+    <div class="campus-controls"><a class="primary" href="{% url 'signup' %}?next={% url 'campus:join' %}">Create an account</a>
+      <a class="secondary" href="{% url 'login' %}?next={% url 'campus:join' %}">Sign in</a></div>
+  {% endif %}
+</section>
+{% endblock %}

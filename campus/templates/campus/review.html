@@ -1,0 +1,23 @@
+{% extends "campus/base.html" %}
+{% block title %}Résumé review · {{ org.name }}{% endblock %}
+{% block content %}
+<header class="page-head"><div><a class="back" href="{% url 'campus:dashboard' org.slug %}">Back to {{ org.name }}</a>
+  <h1>Résumé review</h1><p class="lead">{{ review.owner.user.username }} · {{ review.cohort.name }}</p></div>
+  {% if member.role == "candidate" and not review.withdrawn_at %}
+    <form method="post" action="{% url 'campus:withdraw' org.slug review.pk %}">{% csrf_token %}<button class="secondary">Withdraw mentor access</button></form>
+  {% endif %}</header>
+{% if review.withdrawn_at %}<p class="notice">Mentor access withdrawn {{ review.withdrawn_at|date:"M j, Y" }}.</p>{% endif %}
+{% for rev in revisions %}<section class="card campus-section">
+  <div class="campus-heading"><h2>Revision {{ rev.number }}</h2><time datetime="{{ rev.created_at|date:'c' }}">{{ rev.created_at|date:"M j, Y H:i T" }}</time></div>
+  <p><a href="{% url 'campus:download' org.slug review.pk rev.pk %}">Download {{ rev.filename }}</a></p>
+  <h3>Mentor feedback</h3>
+  {% for note in rev.feedback.all %}
+    <article><strong>{{ note.mentor.user.username }}</strong> · <time datetime="{{ note.created_at|date:'c' }}">{{ note.created_at|date:"M j, Y" }}</time>
+      <p class="preserve">{{ note.body }}</p></article>
+  {% empty %}<p class="hint">No feedback on this revision yet.</p>{% endfor %}
+  {% if member.role == "mentor" %}<form method="post" action="{% url 'campus:comment' org.slug review.pk rev.pk %}">{% csrf_token %}
+    <label for="note-{{ rev.pk }}">Feedback on revision {{ rev.number }}</label>
+    <textarea id="note-{{ rev.pk }}" name="comment" rows="3" maxlength="4000" required></textarea>
+    <button class="primary">Post feedback</button></form>{% endif %}
+</section>{% endfor %}
+{% endblock %}

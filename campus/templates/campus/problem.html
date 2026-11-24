@@ -1,0 +1,6 @@
+{% extends "campus/base.html" %}
+{% block title %}Campus request{% endblock %}
+{% block content %}
+<section class="card campus-narrow campus-top"><h1>Campus request</h1>
+  <p role="alert">{{ problem }}</p><a href="{% url 'campus:home' %}">Return to campus workspaces</a></section>
+{% endblock %}
