@@ -117,6 +117,14 @@ class BackendReviewTests(TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertContains(response, "Unsupported metric", status_code=422)
 
+    def test_harmless_edit_also_invalidates_signed_pdf_approval(self):
+        reviewed = self.client.post(reverse("application_review"), self.post_data())
+        changed = [*CV_LINES, "I use Python for internal analytics."]
+        result = self.client.post(reverse("application_review"),
+            self.post_data(lines=changed, action="export", token=reviewed.context["token"]))
+        self.assertEqual(result.status_code, 422)
+        self.assertContains(result, "current approved review", status_code=422)
+
     def test_changed_profile_invalidates_prior_approval(self):
         reviewed = self.client.post(reverse("application_review"), self.post_data())
         Profile.objects.filter(user=self.user).update(revision=2)
