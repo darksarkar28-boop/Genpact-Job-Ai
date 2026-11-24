@@ -1,0 +1,228 @@
+"""Mailbox integration tests use provider doubles: never contact real inboxes."""
+import os
+from datetime import timedelta
+from unittest.mock import patch
+from urllib.parse import parse_qs, urlsplit
+
+from cryptography.fernet import Fernet
+from django.contrib.auth import get_user_model
+from django.test import Client, TestCase
+from django.urls import reverse
+from django.utils import timezone
+
+from .mail_oauth import MailError, access_token, decrypt, encrypt
+from .mail_providers import gmail_messages, outlook_messages
+from .models import Application, ApplicationStatusEvent, MailConnection, MailSignal
+
+
+class MailboxTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.owner = get_user_model().objects.create_user("mail_owner", password="mail-owner-pass-123")
+        cls.other = get_user_model().objects.create_user("mail_other", password="mail-other-pass-123")
+
+    def setUp(self):
+        self.client.force_login(self.owner)
+        self.env = patch.dict(os.environ, {
+            "JOBWEB_GOOGLE_CLIENT_ID": "test-google", "JOBWEB_GOOGLE_CLIENT_SECRET": "test-secret",
+            "JOBWEB_MICROSOFT_CLIENT_ID": "test-microsoft", "JOBWEB_MICROSOFT_CLIENT_SECRET": "test-secret",
+            "JOBWEB_MAIL_TOKEN_KEY": Fernet.generate_key().decode(),
+        })
+        self.env.start()
+        self.addCleanup(self.env.stop)
+        self.app = Application.objects.create(
+            user=self.owner, company="Example Labs", role="Data Engineer", status="drafted",
+        )
+        self.google = MailConnection.objects.create(
+            user=self.owner, provider="google",
+            access_token_ciphertext=encrypt("sensitive-example-token"),
+            refresh_token_ciphertext=encrypt("refresh-example-token"),
+            expires_at=timezone.now() + timedelta(hours=1),
+        )
+
+    def mail(self, msg_id="001", *, subject="Example Labs received your application",
+             body="We have received your application."):
+        return {
+            "id": msg_id, "subject": subject, "sender": "careers@examplelabs.com",
+            "body": body, "received_at": timezone.now(),
+            "link": "https://mail.google.com/mail/u/0/#all/abc123",
+        }
+
+    def sync(self, data):
+        with patch("webapp.mailbox.load_messages", return_value=data):
+            return self.client.post(reverse("mailbox_sync", args=["google"]))
+
+    def test_oauth_state_pkce_encryption_and_disconnect(self):
+        self.google.delete()
+        start = self.client.post(reverse("mailbox_connect", args=["google"]))
+        url = start["Location"]
+        self.assertEqual(urlsplit(url).hostname, "accounts.google.com")
+        qs = parse_qs(urlsplit(url).query)
+        self.assertEqual(qs["scope"], ["https://www.googleapis.com/auth/gmail.readonly"])
+        self.assertEqual(qs["code_challenge_method"], ["S256"])
+        self.assertIn("state", qs)
+        self.assertNotIn("access_token", url)
+        callback = reverse("mailbox_callback", args=["google"])
+        with patch("webapp.mail_oauth.oauth_request") as exchange:
+            exchange.return_value = {
+                "access_token": "new-secret-access", "refresh_token": "new-secret-refresh",
+                "expires_in": 3500,
+            }
+            bad = self.client.get(callback, {"code": "code", "state": "wrong"})
+            self.assertRedirects(bad, reverse("application_board"))
+            exchange.assert_not_called()
+            # The state is single-use; a mismatched callback cannot be replayed.
+            again = self.client.get(callback, {"code": "code", "state": qs["state"][0]})
+            self.assertRedirects(again, reverse("application_board"))
+            exchange.assert_not_called()
+        start = self.client.post(reverse("mailbox_connect", args=["google"]))
+        state = parse_qs(urlsplit(start["Location"]).query)["state"][0]
+        with patch("webapp.mail_oauth.oauth_request", return_value={
+            "access_token": "new-secret-access", "refresh_token": "new-secret-refresh",
+            "expires_in": 3500,
+        }) as exchange:
+            response = self.client.get(callback, {"code": "auth-code", "state": state})
+            self.assertRedirects(response, reverse("application_board"))
+            exchange.assert_called_once()
+        connection = MailConnection.objects.get(user=self.owner, provider="google")
+        self.assertNotIn("new-secret-access", connection.access_token_ciphertext)
+        self.assertEqual(decrypt(connection.refresh_token_ciphertext), "new-secret-refresh")
+        self.assertEqual(access_token(connection, None), "new-secret-access")
+        self.assertRedirects(
+            self.client.post(reverse("mailbox_disconnect", args=["google"])),
+            reverse("application_board"),
+        )
+        self.assertFalse(MailConnection.objects.filter(user=self.owner).exists())
+
+    def test_refresh_and_reconnect_flag_for_expired_credentials(self):
+        self.google.expires_at = timezone.now() - timedelta(hours=1)
+        self.google.save(update_fields=["expires_at"])
+        with patch("webapp.mail_oauth.oauth_request", return_value={
+            "access_token": "rotated", "refresh_token": "new-refresh", "expires_in": 3600,
+        }) as refresh:
+            self.assertEqual(access_token(self.google, NoneRequest()), "rotated")
+            self.assertEqual(decrypt(self.google.refresh_token_ciphertext), "new-refresh")
+            refresh.assert_called_once()
+        self.google.refresh_token_ciphertext = ""
+        self.google.expires_at = timezone.now() - timedelta(hours=1)
+        self.google.save(update_fields=["refresh_token_ciphertext", "expires_at"])
+        with self.assertRaises(MailError):
+            access_token(self.google, NoneRequest())
+        self.google.refresh_from_db()
+        self.assertTrue(self.google.needs_reconnect)
+
+    def test_mailbox_sync_requires_review_and_never_moves_status_automatically(self):
+        self.assertRedirects(self.sync([self.mail()]), reverse("application_board"))
+        signal = MailSignal.objects.get()
+        self.assertEqual((signal.state, signal.proposed_status), ("pending", "applied"))
+        self.app.refresh_from_db()
+        self.assertEqual(self.app.status, "drafted")
+        self.assertEqual(ApplicationStatusEvent.objects.count(), 0)
+        self.assertContains(self.client.get(reverse("application_board")), "Approve change")
+        decision = reverse("mailbox_decide", args=[signal.pk])
+        self.assertRedirects(self.client.post(decision, {"action": "approve"}), reverse("application_board"))
+        self.app.refresh_from_db()
+        self.assertEqual((self.app.status, self.app.version), ("applied", 1))
+        self.assertEqual(
+            list(ApplicationStatusEvent.objects.values_list("before", "after", "origin")),
+            [("drafted", "applied", "google")],
+        )
+        self.assertEqual(self.client.post(decision, {"action": "approve"}).status_code, 409)
+        self.assertEqual(ApplicationStatusEvent.objects.count(), 1)
+
+    def test_replayed_and_out_of_order_mail_cannot_double_apply(self):
+        first = self.mail()
+        self.sync([first, first])
+        self.sync([first])
+        self.assertEqual(MailSignal.objects.count(), 1)
+        signal = MailSignal.objects.get()
+        self.client.post(reverse("application_move", args=[self.app.pk]), {
+            "status": "interview", "version": 0,
+        })
+        self.assertEqual(
+            self.client.post(reverse("mailbox_decide", args=[signal.pk]), {"action": "approve"}).status_code,
+            409,
+        )
+        signal.refresh_from_db()
+        self.assertEqual(signal.state, "stale")
+        self.app.refresh_from_db()
+        self.assertEqual(self.app.status, "interview")
+        self.assertEqual(ApplicationStatusEvent.objects.count(), 1)
+
+    def test_conflicting_signals_and_no_ambiguous_employer_match(self):
+        self.sync([
+            self.mail("off", subject="Example Labs job offer", body="Please review your formal offer."),
+            self.mail("rej", subject="Example Labs application result", body="We are moving forward with other candidates."),
+        ])
+        self.assertEqual(set(MailSignal.objects.values_list("state", flat=True)), {"needs_review"})
+        self.assertFalse(self.client.get(reverse("application_board")).content.find(b"Conflicting") == -1)
+        self.app.refresh_from_db()
+        self.assertEqual(self.app.status, "drafted")
+        signal = MailSignal.objects.first()
+        self.assertEqual(
+            self.client.post(reverse("mailbox_decide", args=[signal.pk]), {"action": "approve"}).status_code, 409)
+        self.sync([self.mail("other", subject="Hello", body="Generic message")])
+        self.assertEqual(MailSignal.objects.get(provider_message_id="other").state, "needs_review")
+
+    def test_mail_signals_and_connections_are_isolated_by_account(self):
+        self.sync([self.mail()])
+        signal = MailSignal.objects.get()
+        other_client = Client()
+        other_client.force_login(self.other)
+        self.assertNotContains(other_client.get(reverse("application_board")), signal.subject)
+        self.assertEqual(other_client.post(reverse("mailbox_sync", args=["google"])).status_code, 404)
+        self.assertEqual(
+            other_client.post(reverse("mailbox_decide", args=[signal.pk]), {"action": "approve"}).status_code,
+            404,
+        )
+        self.assertEqual(other_client.post(reverse("mailbox_disconnect", args=["google"])).status_code, 302)
+        self.assertTrue(MailSignal.objects.filter(pk=signal.pk).exists())
+        self.assertEqual(Client().post(reverse("mailbox_sync", args=["google"])).status_code, 302)
+
+    def test_gmail_and_outlook_adapter_fixtures(self):
+        import base64
+        encoded = base64.urlsafe_b64encode(b"Schedule a technical interview.").decode().rstrip("=")
+        with patch("webapp.mail_providers.provider_get", side_effect=[
+            {"messages": [{"id": "gmail-msg-1"}]},
+            {
+                "id": "gmail-msg-1", "threadId": "abc123", "internalDate": "1790000000000",
+                "payload": {
+                    "headers": [{"name": "Subject", "value": "Example Labs interview"},
+                                {"name": "From", "value": "Recruiter <jobs@examplelabs.com>"}],
+                    "parts": [{"mimeType": "text/plain", "body": {"data": encoded}}],
+                },
+            },
+        ]) as get:
+            gmail = gmail_messages("fake-token")
+            self.assertEqual(len(gmail), 1)
+            self.assertEqual(gmail[0]["body"], "Schedule a technical interview.")
+            self.assertTrue(gmail[0]["link"].startswith("https://mail.google.com/"))
+            self.assertEqual(get.call_count, 2)
+        with patch("webapp.mail_providers.provider_get", return_value={
+            "value": [{
+                "id": "outlook-msg-1", "subject": "Example Labs interview invitation",
+                "from": {"emailAddress": {"name": "Recruiter", "address": "jobs@examplelabs.com"}},
+                "bodyPreview": "Please schedule an interview",
+                "receivedDateTime": "2026-11-23T12:00:00Z",
+                "webLink": "https://outlook.office.com/mail/id/abc",
+            }],
+        }):
+            outlook = outlook_messages("fake-token")
+            self.assertEqual(outlook[0]["id"], "outlook-msg-1")
+            self.assertEqual(outlook[0]["sender"], "Recruiter jobs@examplelabs.com")
+
+    def test_invalid_method_and_csrf_guards(self):
+        self.assertEqual(self.client.get(reverse("mailbox_connect", args=["google"])).status_code, 405)
+        self.assertEqual(self.client.get(reverse("mailbox_sync", args=["google"])).status_code, 405)
+        csrf = Client(enforce_csrf_checks=True)
+        csrf.force_login(self.owner)
+        self.assertEqual(csrf.post(reverse("mailbox_disconnect", args=["google"])).status_code, 403)
+
+
+class NoneRequest:
+    """Only the provider configuration request object is used for token refresh."""
+    def build_absolute_uri(self, value):
+        return "http://testserver" + value
+
+    def get_host(self):
+        return "testserver"
