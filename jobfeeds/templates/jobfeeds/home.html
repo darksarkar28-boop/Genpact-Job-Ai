@@ -17,7 +17,7 @@
 <p class="hint">Coverage counts confirmed profile skills found in the title or description. It is not a hiring probability. Only active, recently observed jobs are listed.</p>
 {% for item in matches %}
 <article><h3>{{ item.job.title }}</h3><p>{{ item.job.employer }} · {{ item.job.location }} · {{ item.job.region }}</p>
-<p class="hint">Source: {{ item.job.source.provider }} · ID: {{ item.job.source_id }}<br>
+<p class="hint">Source: {{ item.job.source.provider }} · ID: {{ item.job.external_id }}<br>
 Posted: {{ item.job.posted_at|default:"Not supplied" }} · Last seen: {{ item.job.last_seen }}</p>
 {% if item.denominator %}<p>Keyword coverage: {{ item.score }}% ({{ item.matched|length }}/{{ item.denominator }})</p><p>{{ item.matched|join:", "|default:"No matched skills" }}</p>{% else %}<p>Coverage unavailable — save confirmed skills in your master profile.</p>{% endif %}
 <a href="{{ item.job.url }}" target="_blank" rel="noopener noreferrer">Open source application</a></article>

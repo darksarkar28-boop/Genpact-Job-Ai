@@ -47,7 +47,7 @@ def persist(source, started, result):
             if job.updated_at and (not old.updated_at or job.updated_at > old.updated_at):
                 rows[job.source_id] = job
         for job in rows.values():
-            Posting.objects.update_or_create(source=source, source_id=job.source_id, defaults={
+            Posting.objects.update_or_create(source=source, external_id=job.source_id, defaults={
                 "employer": job.employer[:300], "title": job.title[:500],
                 "location": job.location[:500], "url": job.url, "region": job.region,
                 "description": strip_tags(unescape(job.description))[:20000],

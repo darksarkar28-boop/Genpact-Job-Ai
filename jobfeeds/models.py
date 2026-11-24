@@ -15,7 +15,7 @@ class Source(models.Model):
 
 class Posting(models.Model):
     source = models.ForeignKey(Source, on_delete=models.CASCADE, related_name="postings")
-    source_id = models.TextField()
+    external_id = models.TextField()
     employer = models.TextField()
     title = models.TextField()
     location = models.TextField(blank=True)
@@ -30,7 +30,7 @@ class Posting(models.Model):
     active = models.BooleanField(default=True)
 
     class Meta:
-        constraints = [models.UniqueConstraint(fields=["source", "source_id"], name="jobfeeds_unique_source_job")]
+        constraints = [models.UniqueConstraint(fields=["source", "external_id"], name="jobfeeds_unique_source_job")]
 
 
 class Preference(models.Model):

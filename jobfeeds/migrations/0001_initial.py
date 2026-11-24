@@ -20,7 +20,7 @@ class Migration(migrations.Migration):
         ]),
         migrations.CreateModel(name="Posting", fields=[
             ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
-            ("source_id", models.TextField()),
+            ("external_id", models.TextField()),
             ("employer", models.TextField()),
             ("title", models.TextField()),
             ("location", models.TextField(blank=True)),
@@ -34,7 +34,7 @@ class Migration(migrations.Migration):
             ("last_seen", models.DateTimeField(db_index=True)),
             ("active", models.BooleanField(default=True)),
             ("source", models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name="postings", to="jobfeeds.source")),
-        ], options={"constraints": [models.UniqueConstraint(fields=("source", "source_id"), name="jobfeeds_unique_source_job")]}),
+        ], options={"constraints": [models.UniqueConstraint(fields=("source", "external_id"), name="jobfeeds_unique_source_job")]}),
         migrations.CreateModel(name="Preference", fields=[
             ("id", models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")),
             ("market", models.CharField(default="all", max_length=8)),
