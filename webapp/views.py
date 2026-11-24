@@ -12,10 +12,13 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
-from .documents import DocumentProblem, TEMPLATES, artifact_file, queue_document_job, retry_document_job
+from .documents import (
+    DocumentProblem, TEMPLATES, artifact_file, prepare_document_request,
+    queue_document_job, retry_document_job,
+)
 from .forms import EducationSet, ExperienceSet, ImportForm, ProfileForm
 from .importers import ImportProblem, read_upload
-from .models import DocumentJob, Profile
+from .models import DocumentJob, Profile, TemplateReview
 from .profile_data import MAX_ENTRIES, SCALARS, merge_profiles, skill_list
 
 
@@ -120,15 +123,25 @@ def edit_profile(request):
     return _editor(request, profile, profile.data, submitted=request.POST if request.method == "POST" else None)
 
 
-def _document_page(request, *, status=200, form_data=None, export_error=""):
+def _document_page(request, *, status=200, form_data=None, export_error="", preview=None):
     profile = _owned_profile(request)
     jobs = list(DocumentJob.objects.filter(user=request.user).order_by("-created_at")[:25])
+    approved = {
+        review.template_key: review
+        for review in TemplateReview.objects.filter(approved=True).exclude(feedback="")
+    }
+    templates = []
+    for item in TEMPLATES:
+        enriched = dict(item)
+        enriched["review"] = approved.get(item["key"])
+        templates.append(enriched)
     return render(request, "webapp/documents.html", {
         "profile": profile,
         "jobs": jobs,
-        "templates": TEMPLATES,
+        "templates": templates,
         "form_data": form_data or {},
         "export_error": export_error,
+        "preview": preview,
         "has_active_jobs": any(job.status in (DocumentJob.Status.QUEUED, DocumentJob.Status.RUNNING) for job in jobs),
     }, status=status)
 
@@ -138,6 +151,18 @@ def _document_page(request, *, status=200, form_data=None, export_error=""):
 @require_GET
 def document_center(request):
     return _document_page(request)
+
+
+@login_required
+@never_cache
+@require_POST
+def preview_document(request):
+    profile = _owned_profile(request)
+    try:
+        prepared = prepare_document_request(profile, request.POST)
+    except DocumentProblem as exc:
+        return _document_page(request, status=422, form_data=request.POST, export_error=str(exc))
+    return _document_page(request, form_data=request.POST, preview=prepared)
 
 
 @login_required
