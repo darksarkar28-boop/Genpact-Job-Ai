@@ -1,0 +1,64 @@
+name: Retire superseded PR runs
+on:
+  push:
+    branches: [ci/automated-pr-verification]
+    paths: [.github/workflows/retire-pr-backlog.yml]
+
+permissions: {}
+
+jobs:
+  retire:
+    if: github.repository == 'darksarkar28-boop/Genpact-Job-Ai'
+    runs-on: ubuntu-slim
+    timeout-minutes: 10
+    permissions:
+      actions: write
+      pull-requests: read
+    steps:
+      - name: Retire superseded CI runs for the three feature PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: python
+        run: |
+          import json
+          import os
+          from urllib.error import HTTPError
+          from urllib.parse import urlencode
+          from urllib.request import Request, urlopen
+
+          repo = os.environ["GH_REPO"]
+          root = f"https://api.github.com/repos/{repo}"
+          headers = {"Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                     "Accept": "application/vnd.github+json", "User-Agent": "ci-queue-maintenance"}
+
+          def api(path, method="GET"):
+              with urlopen(Request(root + path, headers=headers, method=method), timeout=20) as response:
+                  body = response.read()
+              return json.loads(body) if body else {}
+
+          for number in (12, 13, 14):
+              pr = api(f"/pulls/{number}")
+              if pr["state"] != "open" or pr["head"]["repo"]["full_name"] != repo:
+                  continue
+              branch = pr["head"]["ref"]
+              cancelled = 0
+              for workflow in ("ci.yml", "pr-title.yml"):
+                  query = urlencode({"branch": branch, "event": "pull_request", "per_page": 100})
+                  runs = api(f"/actions/workflows/{workflow}/runs?{query}")["workflow_runs"]
+                  for run in runs:
+                      if run["status"] not in ("queued", "in_progress", "waiting") or run["head_sha"] == pr["head"]["sha"]:
+                          continue
+                      if run["head_repository"]["full_name"] != repo or run["head_branch"] != branch:
+                          continue
+                      current = api(f"/pulls/{number}")
+                      if current["state"] != "open" or current["head"]["ref"] != branch or current["head"]["sha"] == run["head_sha"]:
+                          continue
+                      try:
+                          api(f"/actions/runs/{run['id']}/cancel", "POST")
+                      except HTTPError as error:
+                          if error.code != 409:
+                              raise
+                      else:
+                          cancelled += 1
+              print(f"PR #{number}: retired {cancelled} superseded workflow runs")
