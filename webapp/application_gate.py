@@ -29,9 +29,9 @@ ROLE = re.compile(r"^\s*(?:job title|position|role)\s*:\s*(.+)$", re.I)
 EMPLOYER = re.compile(r"\b(?:worked|working|employed|engineer|analyst|manager|developer)\s+at\s+([A-Z][\w&.-]*(?:\s+[A-Z][\w&.-]*){0,4})")
 COMPANY_FACT = re.compile(r"\b(?:founded|launched|announced|raised|acquired|operates|headquartered|reported|increased|decreased|employs)\b", re.I)
 NAMED_COMPANY_FACT = re.compile(
-    r"\b[A-Z][\w&.-]+(?:\s+[A-Z][\w&.-]+){0,4}\s+(?:has\s+)?"
+    r"\b(?!We\b|Our\b|They\b|My\b)[A-Z][\w&.-]+(?:\s+[A-Z][\w&.-]+){0,4}\s+(?:has\s+)?"
     r"(?:founded|launched|announced|raised|acquired|operates|reported|increased|decreased|employs)\b",
-    re.I if False else 0,
+    0,
 )
 
 
