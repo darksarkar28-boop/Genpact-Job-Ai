@@ -86,6 +86,10 @@ class ApplicationReviewForm(forms.Form):
         widget=forms.Textarea(attrs={"rows": 3}),
     )
 
+    confirm_visual = forms.BooleanField(
+        required=True, label="I inspected the final rendered PDF pages and confirmed their visual reading order"
+    )
+
     def clean(self):
         cleaned = super().clean()
         from .application_gate import MAX_PDF
