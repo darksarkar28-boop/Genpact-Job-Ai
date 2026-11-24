@@ -150,10 +150,15 @@ class _PageText(HTMLParser):
 
 def fetch_public_source(url):
     """Only fetch public HTTPS directly, with DNS-pinned TLS; no redirects/SSRF."""
-    parsed = urlsplit(url)
-    if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password or parsed.port not in (None, 443):
+    try:
+        parsed = urlsplit(url)
+        valid_url = (parsed.scheme == "https" and parsed.hostname and not parsed.username
+                     and not parsed.password and parsed.port in (None, 443))
+        host = parsed.hostname.encode("idna").decode("ascii") if valid_url else ""
+    except (ValueError, UnicodeError) as exc:
+        raise GateError("Company citation has an invalid HTTPS URL") from exc
+    if not valid_url:
         raise GateError("Company citation must be a direct public HTTPS URL")
-    host = parsed.hostname.encode("idna").decode("ascii")
     if "." not in host:
         raise GateError("Company citation must use a public hostname")
     try:
@@ -181,7 +186,7 @@ def fetch_public_source(url):
                 raise GateError("Citation page is too large to verify")
         finally:
             conn.close()
-    except (OSError, ssl.SSLError, UnicodeError, ValueError, http.client.HTTPException) as exc:
+    except (OSError, UnicodeError, ValueError, http.client.HTTPException) as exc:
         if isinstance(exc, GateError):
             raise
         raise GateError("Cannot independently fetch company citation") from exc
@@ -244,18 +249,16 @@ def audit(profile, cv_pdf, *, cover_pdf=b"", keywords, claims=(), company_citati
         coverage = None
     else:
         try:
-            from tools.ats_coverage import load_keywords
-            # Reuse the exact report contract but validate untrusted in-memory data.
-            import tempfile
-            # No disk write needed; validate the schema with the matching rules here.
+            # Validate untrusted keyword JSON before computing any score.
             if len(keywords) > 150 or any(
                 not isinstance(k, dict) or not isinstance(k.get("term"), str)
                 or not k["term"].strip() or len(k["term"]) > 140
                 or k.get("priority") not in ("required", "preferred")
                 or not isinstance(k.get("aliases", []), list)
-                or any(not isinstance(a, str) for a in k.get("aliases", []))
+                or len(k.get("aliases", [])) > 20
+                or any(not isinstance(a, str) or not a.strip() or len(a) > 140 for a in k.get("aliases", []))
                 for k in keywords
-            ):
+            ) or len({normalized(k["term"]) for k in keywords}) != len(keywords):
                 raise GateError("Invalid keyword list or priorities")
             coverage = evaluate(cv, keywords, profile_text(profile))
         except (KeyError, TypeError, ValueError, GateError):
@@ -267,7 +270,14 @@ def audit(profile, cv_pdf, *, cover_pdf=b"", keywords, claims=(), company_citati
     errors.extend(candidate_findings(content, profile, claims, independently_verified))
     if cover and not employer:
         errors.append("State the target employer to check cover letter company claims")
+    verified_sources = [
+        {"url": source["url"], "claim": source["claim"]}
+        for source in company_citations
+        if isinstance(source, dict) and isinstance(source.get("claim"), str)
+        and source["claim"] in independently_verified
+    ]
     return {"allowed": not errors, "errors": list(dict.fromkeys(errors)), "coverage": coverage,
+            "verified_sources": verified_sources,
             "verified_pdf_pages": True,
             "pdf_sha256": hashlib.sha256(cv_pdf + cover_pdf).hexdigest(),
             "note": "Checks exact extracted text, declared evidence, high-risk numeric/degree/employer claims, "
