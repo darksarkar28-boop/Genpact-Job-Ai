@@ -27,6 +27,8 @@ YEAR = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
 DEGREE = re.compile(r"\b(?:B\.?\s?Sc|M\.?\s?Sc|B\.?\s?Tech|M\.?\s?Tech|MBA|Ph\.?\s?D|Bachelor(?:'s)?|Master(?:'s)?|Doctorate)\b", re.I)
 ROLE = re.compile(r"^\s*(?:job title|position|role)\s*:\s*(.+)$", re.I)
 EMPLOYER = re.compile(r"\b(?i:(?:worked|working|employed|engineer|analyst|manager|developer)\s+at)\s+([A-Z][\w&.-]*(?:\s+[A-Z][\w&.-]*){0,4})")
+EXPERIENCE_HEADINGS = {"experience", "work experience", "professional experience", "employment", "work history", "employment history"}
+OTHER_HEADINGS = {"summary", "profile", "education", "skills", "projects", "certifications", "awards", "languages", "publications"}
 COMPANY_FACT = re.compile(r"\b(?:founded|launched|announced|raised|acquired|operates|headquartered|reported|increased|decreased|employs)\b", re.I)
 NAMED_COMPANY_FACT = re.compile(
     r"\b(?!We\b|Our\b|They\b|My\b)[A-Z][\w&.-]+(?:\s+[A-Z][\w&.-]+){0,4}\s+(?:has\s+)?"
@@ -104,6 +106,47 @@ def _profile_fields(profile, key):
     return [str(row.get(key, "")).strip() for row in profile.get(section, []) if isinstance(row, dict) and row.get(key)]
 
 
+def _standalone_title_like(text):
+    """Detect a short title-case role heading, not narrative or numeric bullets.
+
+    In this deterministic gate, a potential role title without an employer must
+    match one of the user's confirmed job titles before it may be released.
+    """
+    words = text.strip().split()
+    return (1 <= len(words) <= 7 and all(
+        word[0].isupper() or word.casefold() in {"of", "and", "the", "for", "in", "&"}
+        for word in words
+    ) and not any(ch.isdigit() for ch in text))
+
+
+def _position_finding(line, in_experience, titles, positions):
+    label = ROLE.match(line)
+    if not label and not in_experience:
+        return None
+    claim = (label.group(1) if label else line).strip()
+    parts = re.split(r"\s+at\s+", claim, maxsplit=1, flags=re.I)
+    if len(parts) == 1:
+        if label and normalized(claim) not in titles:
+            return "Unsupported job title: " + claim[:100]
+        if not label and in_experience and _standalone_title_like(claim) and normalized(claim) not in titles:
+            return "Unsupported job title: " + claim[:100]
+        return None
+
+    title, employer = map(normalized, parts)
+    # Free prose can mention a workplace. Only a label, a known title, or a
+    # standalone role heading declares that the candidate held this position.
+    if not label and title not in titles:
+        words = parts[0].split()
+        if words[0].casefold() in {"i", "we", "my", "our"} or not all(
+            word[0].isupper() or word.casefold() in {"of", "and", "the", "for", "in", "&"}
+            for word in words
+        ):
+            return None
+    if (title, employer) not in positions:
+        return "Unsupported job title and employer: " + claim[:160]
+    return None
+
+
 def candidate_findings(document, profile, claim_list, externally_verified=""):
     """Require high-risk tokens and declared claims to be in confirmed profile evidence.
 
@@ -111,16 +154,55 @@ def candidate_findings(document, profile, claim_list, externally_verified=""):
     """
     evidence = normalized(profile_text(profile))
     external = normalized(externally_verified)
+    positions = {
+        (normalized(row["title"]), normalized(str(row.get("employer") or "")))
+        for row in profile.get("experience", [])
+        if isinstance(row, dict) and isinstance(row.get("title"), str) and row["title"].strip()
+    }
+    titles = {title for title, _ in positions}
+    confirmed_degrees = {normalized(degree) for degree in _profile_fields(profile, "degree")}
+    known_degree_labels = {
+        normalized(match.group(0))
+        for degree in _profile_fields(profile, "degree")
+        for match in DEGREE.finditer(degree)
+    }
     findings = []
     for token in sorted(set(m.group().strip() for m in [*YEAR.finditer(document), *NUMBER.finditer(document)])):
         if not has_term(evidence, token) and not has_term(external, token):
             findings.append(f"Unsupported metric or date: {token}")
+    in_experience = False
     for line in document.splitlines():
-        if DEGREE.search(line) and not any(has_term(normalized(line), degree) for degree in _profile_fields(profile, "degree")):
-            findings.append("Unsupported degree/course in: " + line[:100])
-        position = ROLE.match(line)
-        if position and not any(has_term(normalized(position.group(1)), role) for role in _profile_fields(profile, "title")):
-            findings.append("Unsupported job title: " + position.group(1)[:100])
+        heading = normalized(line).rstrip(":")
+        if heading in EXPERIENCE_HEADINGS:
+            in_experience = True
+            continue
+        elif heading in OTHER_HEADINGS:
+            in_experience = False
+            continue
+        degree_tokens = list(DEGREE.finditer(line))
+        for index, degree_token in enumerate(degree_tokens):
+            # Match the *whole qualification* against one saved degree record.
+            # Looking only at BSc/PhD prefixes allows `BSc Computer Science,
+            # BSc Physics` when the candidate confirmed only the former.
+            end = degree_tokens[index + 1].start() if index + 1 < len(degree_tokens) else len(line)
+            qualification = line[degree_token.start():end]
+            # School, dates and punctuation are presentation metadata, not
+            # part of the qualification. Another degree token always creates
+            # another claim, even when it has the same credential prefix.
+            qualification = re.split(
+                r"\s*(?:[,;|•]|\s+[—–]\s+)\s*|\s+(?:at|from)\s+",
+                qualification, maxsplit=1, flags=re.I,
+            )[0]
+            qualification = re.sub(r"\s*\(\s*(?:19|20)\d{2}[^)]*\)\s*$", "", qualification)
+            qualification = re.sub(r"\s+(?:19|20)\d{2}\s*[-–]\s*(?:19|20)\d{2}\s*$", "", qualification)
+            qualification = re.sub(r"\s+(?:and|&)\s*$", "", qualification, flags=re.I).strip(" -–—()[]{},;|•/")
+            if normalized(qualification) not in confirmed_degrees:
+                kind = ("Unsupported degree credential" if normalized(degree_token.group(0))
+                        not in known_degree_labels else "Unsupported degree/course")
+                findings.append(f"{kind}: {qualification[:120]}")
+        position_error = _position_finding(line, in_experience, titles, positions)
+        if position_error:
+            findings.append(position_error)
         for match in EMPLOYER.finditer(line):
             if not any(has_term(normalized(match.group(1)), emp) for emp in _profile_fields(profile, "employer")):
                 findings.append("Unsupported employer: " + match.group(1)[:100])
@@ -129,8 +211,8 @@ def candidate_findings(document, profile, claim_list, externally_verified=""):
             findings.append(f"Candidate claim #{i + 1} needs claim and evidence text")
             continue
         claim, quote = entry["claim"].strip(), entry["evidence"].strip()
-        if not claim or not quote or not has_term(normalized(document), claim) or not has_term(evidence, quote):
-            findings.append(f"Candidate claim #{i + 1} is not present in the draft or confirmed profile evidence")
+        if not has_term(normalized(document), claim) or not has_term(evidence, quote) or not has_term(normalized(quote), claim):
+            findings.append(f"Candidate claim #{i + 1} needs matching wording in the draft and its confirmed evidence: {claim[:160]}")
     return list(dict.fromkeys(findings))
 
 
