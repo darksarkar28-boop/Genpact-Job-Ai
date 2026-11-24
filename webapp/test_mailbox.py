@@ -162,7 +162,11 @@ class MailboxTests(TestCase):
         self.assertEqual(
             self.client.post(reverse("mailbox_decide", args=[signal.pk]), {"action": "approve"}).status_code, 409)
         self.sync([self.mail("other", subject="Hello", body="Generic message")])
-        self.assertEqual(MailSignal.objects.get(provider_message_id="other").state, "needs_review")
+        self.assertEqual(MailSignal.objects.get(provider_message_id="other").state, "ignored")
+        ambiguous = self.mail("ambiguous", subject="Technical interview invitation", body="Schedule a technical interview")
+        ambiguous["sender"] = "noreply@unknown.test"
+        self.sync([ambiguous])
+        self.assertEqual(MailSignal.objects.get(provider_message_id="ambiguous").state, "needs_review")
 
     def test_mail_signals_and_connections_are_isolated_by_account(self):
         self.sync([self.mail()])
