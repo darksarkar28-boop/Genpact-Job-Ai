@@ -78,6 +78,7 @@ class BackendReviewTests(TestCase):
             "keywords": json.dumps(TERMS),
             "claims": "[]",
             "company_citations": "[]",
+            "confirm_visual": "on",
             "cv_pdf": SimpleUploadedFile("final_cv.pdf", pdf(CV_LINES if lines is None else lines),
                                           content_type="application/pdf"),
             "action": action,
@@ -182,6 +183,12 @@ class BackendReviewTests(TestCase):
         response = self.client.generic("POST", reverse("application_review"),
                                        CONTENT_LENGTH=str(17 * 1024 * 1024))
         self.assertEqual(response.status_code, 413)
+
+    def test_visual_review_confirmation_is_mandatory(self):
+        response = self.client.post(reverse("application_review"),
+            self.post_data(extra={"confirm_visual": ""}))
+        self.assertEqual(response.status_code, 422)
+        self.assertNotIn("application/zip", response.get("Content-Type", ""))
 
     def test_missing_csrf_and_unauthenticated_access_block(self):
         anonymous = Client()
