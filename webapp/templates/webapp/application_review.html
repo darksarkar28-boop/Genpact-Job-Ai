@@ -1,0 +1,67 @@
+{% extends "webapp/base.html" %}
+{% block title %}Review an application{% endblock %}
+{% block content %}
+<div class="page-head"><div>
+  <a class="back" href="{% url 'workspace' %}">← Master profile</a>
+  <p class="kicker">Application integrity</p>
+  <h1>Review before exporting</h1>
+  <p class="lead">Upload the final PDF, provide the posting's exact keywords, and check factual claims against your confirmed profile. A blocked document cannot be released through this page.</p>
+</div></div>
+<div class="workspace-grid">
+  <section class="card">
+    <h2>Final document checks</h2>
+    <p class="hint">Only the signed-in account's saved profile is used. PDFs are processed for this request and are not kept on the server. Scanned or unreadable PDFs are rejected.</p>
+    <form method="post" enctype="multipart/form-data" class="upload-form">
+      {% csrf_token %}
+      {{ form.profile_revision }}
+      {{ form.non_field_errors }}
+      {% for field in form.visible_fields %}
+        <div class="field">
+          <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+          {{ field }}
+          {% if field.help_text %}<p class="hint">{{ field.help_text }}</p>{% endif %}
+          {{ field.errors }}
+        </div>
+      {% endfor %}
+      <div class="actions">
+        <button class="primary" name="action" value="review" type="submit">Check document</button>
+        {% if token %}
+          <input type="hidden" name="token" value="{{ token }}">
+          <button class="secondary" name="action" value="export" type="submit">Recheck and export ZIP</button>
+        {% endif %}
+      </div>
+      {% if requires_reupload %}
+        <p class="hint">For privacy, the PDF uploads are not retained. Select the <strong>same files again</strong> before export. Any edit to the PDFs or form fields requires another review.</p>
+      {% endif %}
+    </form>
+  </section>
+  <aside class="card">
+    <h2>Verification results</h2>
+    {% if report %}
+      {% if report.allowed %}
+        <p class="notice"><strong>Pass:</strong> the submitted documents passed this deterministic check. Revalidation is required on export.</p>
+      {% else %}
+        <p class="errorlist"><strong>Blocked:</strong> correct the following issues before release.</p>
+        <ul>{% for error in report.errors %}<li>{{ error }}</li>{% endfor %}</ul>
+      {% endif %}
+      {% if report.coverage %}
+        <h3>Posting keyword coverage</h3>
+        <p class="hint">Exact matches / all terms; synonyms are counted separately.</p>
+        <ul>{% for priority, summary in report.coverage.summary.items %}
+          <li>{{ priority|capfirst }}: {{ summary.covered }}/{{ summary.total }} exact; {{ summary.synonym_only }} synonym-only; {{ summary.missing }} missing</li>
+        {% endfor %}</ul>
+        <table>
+          <thead><tr><th>Term</th><th>Priority</th><th>Status</th></tr></thead>
+          <tbody>{% for item in report.coverage.keywords %}
+            <tr><td>{{ item.term }}</td><td>{{ item.priority }}</td><td>{{ item.status }}</td></tr>
+          {% endfor %}</tbody>
+        </table>
+      {% endif %}
+      <p class="hint">{{ report.note }}</p>
+    {% else %}
+      <p>Verification identifies missing ATS terms, unsupported dates, metrics, degrees and employers, incomplete contact text, section-order problems and unsupported company-specific statements.</p>
+    {% endif %}
+    <p class="hint">This automated report cannot establish semantic truth or guarantee a PDF's visual reading order. Review the final rendered pages manually as well.</p>
+  </aside>
+</div>
+{% endblock %}
