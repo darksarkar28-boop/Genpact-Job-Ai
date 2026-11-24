@@ -5,7 +5,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import UserCreationForm
 from django.db import IntegrityError, transaction
 from django.db.models import F
-from django.http import FileResponse, Http404, JsonResponse
+from django.http import FileResponse, Http404, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -15,7 +15,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from .documents import (
     DocumentProblem, TEMPLATES, artifact_file, prepare_document_request,
-    queue_document_job, retry_document_job,
+    queue_document_job, release_approval_matches, retry_document_job, review_pdf_file,
 )
 from .forms import EducationSet, ExperienceSet, ImportForm, ProfileForm
 from .importers import ImportProblem, read_upload
@@ -124,9 +124,26 @@ def edit_profile(request):
     return _editor(request, profile, profile.data, submitted=request.POST if request.method == "POST" else None)
 
 
-def _document_page(request, *, status=200, form_data=None, export_error="", preview=None):
+def _document_page(
+    request, *, status=200, form_data=None, export_error="", preview=None,
+    release_report=None, release_form_data=None,
+):
     profile = _owned_profile(request)
     jobs = list(DocumentJob.objects.filter(user=request.user).order_by("-created_at")[:25])
+    for job in jobs:
+        job.release_approved = release_approval_matches(job, request.user.pk, profile.revision)
+    successful_cvs = [
+        job for job in jobs
+        if job.status == DocumentJob.Status.SUCCEEDED
+        and job.document_type == DocumentJob.DocumentType.CV
+        and artifact_file(job) and review_pdf_file(job)
+    ]
+    successful_covers = [
+        job for job in jobs
+        if job.status == DocumentJob.Status.SUCCEEDED
+        and job.document_type == DocumentJob.DocumentType.COVER_LETTER
+        and artifact_file(job) and review_pdf_file(job)
+    ]
     approved = {
         review.template_key: review
         for review in TemplateReview.objects.filter(approved=True).exclude(feedback="")
@@ -143,6 +160,10 @@ def _document_page(request, *, status=200, form_data=None, export_error="", prev
         "form_data": form_data or {},
         "export_error": export_error,
         "preview": preview,
+        "release_report": release_report,
+        "release_form_data": release_form_data or {},
+        "successful_cvs": successful_cvs,
+        "successful_covers": successful_covers,
         "has_active_jobs": any(job.status in (DocumentJob.Status.QUEUED, DocumentJob.Status.RUNNING) for job in jobs),
     }, status=status)
 
@@ -208,7 +229,12 @@ def document_status(request, job_id):
         "verification": job.verification,
     }
     if job.status == DocumentJob.Status.SUCCEEDED and artifact_file(job):
-        payload["download_url"] = reverse("document_download", args=[job.pk])
+        profile = _owned_profile(request)
+        approved = release_approval_matches(job, request.user.pk, profile.revision)
+        payload["release_approved"] = approved
+        payload["review_required"] = not approved
+        if approved:
+            payload["download_url"] = reverse("document_download", args=[job.pk])
         if job.output_format == DocumentJob.OutputFormat.PDF:
             payload["preview_url"] = reverse("document_download", args=[job.pk]) + "?preview=1"
     return JsonResponse(payload)
@@ -218,6 +244,8 @@ def document_status(request, job_id):
 @never_cache
 @require_GET
 def document_download(request, job_id):
+    import hashlib
+
     job = get_object_or_404(DocumentJob, pk=job_id, user=request.user)
     path = artifact_file(job)
     if job.status != DocumentJob.Status.SUCCEEDED or path is None:
@@ -227,12 +255,132 @@ def document_download(request, job_id):
         DocumentJob.OutputFormat.DOCX: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     }[job.output_format]
     inline = job.output_format == DocumentJob.OutputFormat.PDF and request.GET.get("preview") == "1"
+    if not inline:
+        profile = _owned_profile(request)
+        if not release_approval_matches(job, request.user.pk, profile.revision):
+            return HttpResponseForbidden(
+                "Final download is locked until these exact generated files pass the application review."
+            )
+        if hashlib.sha256(path.read_bytes()).hexdigest() != job.artifact_sha256:
+            return HttpResponseForbidden("Final download is locked because the approved artifact changed.")
     return FileResponse(
         path.open("rb"),
         as_attachment=not inline,
         filename=path.name,
         content_type=content_type,
     )
+
+
+@login_required
+@never_cache
+@require_POST
+def approve_document_release(request):
+    """Approve exact generated artifacts for final download using Issue #6's audit."""
+    import json
+
+    from .application_gate import GateError, audit, parse_json_list
+
+    profile = _owned_profile(request)
+    try:
+        cv_job = get_object_or_404(
+            DocumentJob,
+            pk=int(request.POST.get("cv_job_id") or 0),
+            user=request.user,
+            document_type=DocumentJob.DocumentType.CV,
+        )
+        cover_id = int(request.POST.get("cover_job_id") or 0)
+        cover_job = None
+        if cover_id:
+            cover_job = get_object_or_404(
+                DocumentJob,
+                pk=cover_id,
+                user=request.user,
+                document_type=DocumentJob.DocumentType.COVER_LETTER,
+            )
+        jobs = [cv_job] + ([cover_job] if cover_job else [])
+        for job in jobs:
+            if (
+                job.status != DocumentJob.Status.SUCCEEDED
+                or job.profile_revision != profile.revision
+                or not artifact_file(job)
+                or not review_pdf_file(job)
+            ):
+                raise DocumentProblem(
+                    "Choose completed generated files from the current saved profile revision."
+                )
+        if request.POST.get("confirm_visual") != "on":
+            raise DocumentProblem("Confirm that you visually reviewed the generated documents.")
+        terms_obj = json.loads(request.POST.get("keywords") or "{}")
+        if not isinstance(terms_obj, dict) or not isinstance(terms_obj.get("keywords"), list):
+            raise GateError("Posting keywords must be a JSON object with a keywords list")
+        keywords = terms_obj["keywords"]
+        claims = parse_json_list(request.POST.get("claims") or "[]", "Candidate claims", maximum=60)
+        citations = parse_json_list(
+            request.POST.get("company_citations") or "[]", "Company citations", maximum=8
+        )
+        headings = [
+            line.strip()
+            for line in (request.POST.get("visual_headings") or "").splitlines()
+            if line.strip()
+        ]
+        cv_bytes = review_pdf_file(cv_job).read_bytes()
+        cover_bytes = review_pdf_file(cover_job).read_bytes() if cover_job else b""
+    except (DocumentProblem, GateError, ValueError, TypeError) as exc:
+        return _document_page(
+            request,
+            status=422,
+            export_error=str(exc),
+            release_form_data=request.POST,
+        )
+
+    report = audit(
+        profile.data,
+        cv_bytes,
+        cover_pdf=cover_bytes,
+        keywords=keywords,
+        claims=claims,
+        company_citations=citations,
+        employer=(request.POST.get("employer") or "").strip(),
+        visual_headings=headings,
+    )
+    if not report["allowed"]:
+        return _document_page(
+            request,
+            status=422,
+            export_error="Final download remains locked. Correct the review findings and try again.",
+            release_report=report,
+            release_form_data=request.POST,
+        )
+
+    profile.refresh_from_db()
+    if any(job.profile_revision != profile.revision for job in jobs):
+        return _document_page(
+            request,
+            status=409,
+            export_error="Your profile changed during review. Review the generated files again.",
+            release_report=report,
+            release_form_data=request.POST,
+        )
+
+    approved_at = timezone.now().isoformat()
+    application_jobs = [job.pk for job in jobs]
+    for job in jobs:
+        verification = dict(job.verification or {})
+        verification["release_approval"] = {
+            "user_id": request.user.pk,
+            "profile_revision": profile.revision,
+            "artifact_sha256": job.artifact_sha256,
+            "approved_at": approved_at,
+            "application_jobs": application_jobs,
+        }
+        job.verification = verification
+        job.save(update_fields=["verification", "updated_at"])
+
+    messages.success(
+        request,
+        "Application review passed. Final downloads are unlocked for the exact approved files.",
+    )
+    return redirect("documents")
 
 
 @login_required
