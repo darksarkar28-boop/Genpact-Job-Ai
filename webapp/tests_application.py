@@ -88,7 +88,16 @@ class BackendReviewTests(TestCase):
         return fields
 
     def test_valid_review_and_export_both_check_final_pdf(self):
-        reviewed = self.client.post(reverse("application_review"), self.post_data())
+        cv = pdf(CV_LINES)
+        cover = pdf(["Dear Hiring Team,", "I enjoy building reporting tools using Python and SQL."])
+
+        def uploads():
+            return {
+                "cv_pdf": SimpleUploadedFile("cv.pdf", cv, content_type="application/pdf"),
+                "cover_pdf": SimpleUploadedFile("cover.pdf", cover, content_type="application/pdf"),
+            }
+
+        reviewed = self.client.post(reverse("application_review"), self.post_data(extra=uploads()))
         self.assertEqual(reviewed.status_code, 200, reviewed.content[:300])
         report = reviewed.context["report"]
         self.assertTrue(report["allowed"])
@@ -96,14 +105,22 @@ class BackendReviewTests(TestCase):
         self.assertEqual(report["coverage"]["keywords"][1]["status"], "missing (unverified)")
         token = reviewed.context["token"]
         self.assertTrue(token)
-        downloaded = self.client.post(reverse("application_review"), self.post_data(action="export", token=token))
+        downloaded = self.client.post(reverse("application_review"), self.post_data(action="export", token=token, extra=uploads()))
         self.assertEqual(downloaded.status_code, 200, downloaded.content[:200])
         self.assertEqual(downloaded["Content-Type"], "application/zip")
         with zipfile.ZipFile(io.BytesIO(downloaded.content)) as bundle:
             self.assertIn("validated_cv.pdf", bundle.namelist())
-            self.assertTrue(bundle.read("validated_cv.pdf").startswith(b"%PDF-"))
+            self.assertEqual(bundle.read("validated_cv.pdf"), cv)
+            self.assertEqual(bundle.read("validated_cover_letter.pdf"), cover)
             report = json.loads(bundle.read("verification_report.json"))
             self.assertTrue(report["allowed"])
+
+    def test_onboarding_still_accepts_one_document_per_import(self):
+        response = self.client.post(reverse("import"), {"document": [
+            SimpleUploadedFile("first.pdf", pdf(CV_LINES)),
+            SimpleUploadedFile("second.pdf", pdf(CV_LINES)),
+        ]})
+        self.assertContains(response, "Choose one document", status_code=422)
 
     def test_export_without_approval_is_rejected_by_backend(self):
         response = self.client.post(reverse("application_review"), self.post_data(action="export"))

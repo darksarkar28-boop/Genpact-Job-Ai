@@ -42,8 +42,8 @@ characters are folded using the existing PDF-verifier comparison function.
 **Important:** A profile-text hit is only a lead; a reviewer must verify the
 underlying claim against confirmed evidence before suggesting a CV edit.
 An unverified missing term is not proof that a person lacks the skill. Do not
-stuff missing terms or turn a synonym into a false claim. The full issue's
-mandatory pre-export factual-evidence gate remains to be implemented.
+stuff missing terms or turn a synonym into a false claim. Final application
+PDFs go through the authenticated review described below.
 
 Remove the temporary extracted text and terms JSON after the verification step.
 

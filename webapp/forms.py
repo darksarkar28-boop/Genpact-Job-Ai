@@ -13,6 +13,8 @@ class ImportForm(forms.Form):
 
     def clean_document(self):
         document = self.cleaned_data["document"]
+        if len(self.files) != 1 or (hasattr(self.files, "getlist") and len(self.files.getlist("document")) > 1):
+            raise forms.ValidationError("Choose one document to import at a time.")
         if document.size > MAX_UPLOAD_BYTES:
             raise forms.ValidationError("Choose a file up to 8 MiB.")
         if document.name.rsplit(".", 1)[-1].lower() not in SUPPORTED_TYPES:
