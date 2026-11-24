@@ -371,6 +371,17 @@ check and report that clearly. See `tools/README_ATS_COVERAGE.md`.
 
 **4. Clean up:** delete the extracted `.txt` file **and the temporary `-terms.json` file**.
 
+### 5e. Clean up build artifacts
+
+After the final clean compile (and after 5b-5d have passed), delete the intermediate files the compile command left behind. Keep the source (`<CV_EXT>`/`<COVER_EXT>`), the `.pdf`, and every template asset (`cover.cls`, `OpenFonts/`, a custom template's files).
+
+- **Stock or custom LaTeX toolchain:**
+  ```bash
+  rm -f cv/main_<company>_<role>.{aux,log,out,fls,fdb_latexmk,synctex.gz} cover_letters/cover_<company>_<role>.{aux,log,out,fls,fdb_latexmk,synctex.gz}
+  ```
+- **Custom template whose compile command redirects to `build/`:** also `rm -rf cv/build cover_letters/build` (`/add-template` Step 4 already says `/apply` must delete it).
+- **Zero-artifact toolchain (e.g. `typst compile`):** nothing to delete.
+
 ### 5f. Mandatory final export release gate (authenticated web app)
 
 The PDF text-layer and grounding review above must finish **before** releasing
@@ -394,17 +405,6 @@ fails, disclose the blocked checks and leave the artifact as a draft. A
 candidate may correct facts only by updating their confirmed profile and
 rerunning the audit; do not silently waive unsupported claims. For use and
 limits see `tools/README_ATS_COVERAGE.md`.
-
-### 5e. Clean up build artifacts
-
-After the final clean compile (and after 5b-5d have passed), delete the intermediate files the compile command left behind. Keep the source (`<CV_EXT>`/`<COVER_EXT>`), the `.pdf`, and every template asset (`cover.cls`, `OpenFonts/`, a custom template's files).
-
-- **Stock or custom LaTeX toolchain:**
-  ```bash
-  rm -f cv/main_<company>_<role>.{aux,log,out,fls,fdb_latexmk,synctex.gz} cover_letters/cover_<company>_<role>.{aux,log,out,fls,fdb_latexmk,synctex.gz}
-  ```
-- **Custom template whose compile command redirects to `build/`:** also `rm -rf cv/build cover_letters/build` (`/add-template` Step 4 already says `/apply` must delete it).
-- **Zero-artifact toolchain (e.g. `typst compile`):** nothing to delete.
 
 ---
 
