@@ -59,7 +59,7 @@ EducationSet = formset_factory(EducationForm, extra=0, max_num=MAX_ENTRIES, vali
 class ApplicationReviewForm(forms.Form):
     """Ephemeral uploads: PDFs and profile facts are never placed in the session."""
     profile_revision = forms.IntegerField(min_value=0, widget=forms.HiddenInput)
-    employer = forms.CharField(max_length=200, required=False, label="Target employer")
+    employer = forms.CharField(max_length=200, required=True, label="Target employer")
     cv_pdf = forms.FileField(label="Final CV PDF")
     cover_pdf = forms.FileField(label="Final cover letter PDF (optional)", required=False)
     visual_headings = forms.CharField(
