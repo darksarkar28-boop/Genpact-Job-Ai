@@ -1,0 +1,40 @@
+{% extends "webapp/base.html" %}
+{% load static %}
+{% block title %}Interview practice{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ attempt.context.role }} at {{ attempt.context.employer }}</h1><p>Profile revision {{ attempt.profile_revision }} · {{ attempt.mode }} mode</p></div></div>
+{% if question %}
+<section class="card stack">
+<h2>Question {{ attempt.question_index|add:1 }} of {{ attempt.questions|length }}</h2>
+<p>{{ question.text }}</p>
+<p>Time remaining: <strong id="interview-timer" data-seconds="{{ remaining }}">{{ remaining }}</strong> seconds. When time expires, continue to the next question; late answers are not scored or saved.</p>
+<form id="interview-answer" data-mode="{{ attempt.mode }}" method="post" enctype="multipart/form-data">{% csrf_token %}{{ form.as_p }}
+{% if attempt.recording_consent %}
+<div id="media-controls" hidden>
+<p id="recording-status" role="status">Recording not started.</p>
+<button type="button" id="record-start" class="secondary">Start recording</button>
+<button type="button" id="record-stop" class="secondary" disabled>Stop recording</button>
+<button type="button" id="record-discard" class="secondary" disabled>Discard recording</button>
+<video id="record-preview" controls playsinline hidden></video>
+<p>Review your recording locally, then enter or edit a transcript for rubric feedback. Voice/video recording is optional; you can answer in text instead.</p>
+</div>
+{% endif %}
+<button id="answer-submit" class="primary" type="submit">Submit answer / continue</button></form>
+<script src="{% static 'webapp/interview.js' %}" defer></script>
+</section>
+{% else %}<section class="card"><h2>Interview complete</h2><p>Review your answer-by-answer feedback below.</p></section>{% endif %}
+<section class="card stack"><h2>Practice feedback</h2>
+<p>Heuristic transcript rubric, 0–5 per applicable dimension. It does not evaluate factual correctness or spoken fluency.</p>
+{% for answer in answers %}<article>
+<h3>{{ answer.question }}</h3>
+{% if answer.timed_out %}<p>Time expired; answer not saved.</p>{% endif %}
+{% if answer.feedback %}<p>Clarity: {{ answer.feedback.clarity|default_if_none:"Not scored" }} · Technical depth: {{ answer.feedback.technical_depth|default_if_none:"Not scored" }}</p>
+<p>{{ answer.feedback.feedback }}</p><p>Answer excerpt: {{ answer.feedback.excerpt }}</p>{% endif %}
+{% if answer.transcript %}<details><summary>Saved transcript</summary><p class="preserve">{{ answer.transcript }}</p></details>
+<form method="post" action="{% url 'interview-erase' attempt.pk answer.question_index %}">{% csrf_token %}<button name="action" value="transcript" type="submit" class="secondary">Delete transcript and scores</button></form>{% endif %}
+{% if answer.media_type %}<a href="{% url 'interview-download' attempt.pk answer.question_index %}">Download recording</a>
+<form method="post" action="{% url 'interview-erase' attempt.pk answer.question_index %}">{% csrf_token %}<button name="action" value="recording" type="submit" class="secondary">Delete recording</button></form>{% endif %}
+</article>{% empty %}<p>Feedback appears after you submit an answer.</p>{% endfor %}</section>
+<section class="card stack"><a href="{% url 'interview-home' %}">All mock interviews</a><a href="{% url 'career-planning' %}">Compensation and skill planning</a>
+<form method="post" action="{% url 'interview-delete' attempt.pk %}">{% csrf_token %}<button type="submit" class="secondary">Delete entire interview and all recordings</button></form></section>
+{% endblock %}

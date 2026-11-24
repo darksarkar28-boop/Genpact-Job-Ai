@@ -4,7 +4,6 @@ No external requests, invented market data, or candidate information in logs.
 Salary observations are annual base pay, in the same explicit currency.
 """
 import datetime
-import re
 from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ValidationError
@@ -34,7 +33,7 @@ def _amount(value):
         amount = Decimal(str(value))
     except (InvalidOperation, ValueError) as exc:
         raise ValueError("Enter a positive annual base salary.") from exc
-    if not amount.is_finite() or not 0 < amount <= 10**12:
+    if not amount.is_finite() or not Decimal("0.01") <= amount <= 10**12:
         raise ValueError("Enter a positive annual base salary no greater than 1 trillion.")
     return amount.quantize(Decimal("0.01"))
 
