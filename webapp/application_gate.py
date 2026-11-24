@@ -106,6 +106,19 @@ def _profile_fields(profile, key):
     return [str(row.get(key, "")).strip() for row in profile.get(section, []) if isinstance(row, dict) and row.get(key)]
 
 
+def _standalone_title_like(text):
+    """Detect a short title-case role heading, not narrative or numeric bullets.
+
+    In this deterministic gate, a potential role title without an employer must
+    match one of the user's confirmed job titles before it may be released.
+    """
+    words = text.strip().split()
+    return (1 <= len(words) <= 7 and all(
+        word[0].isupper() or word.casefold() in {"of", "and", "the", "for", "in", "&"}
+        for word in words
+    ) and not any(ch.isdigit() for ch in text))
+
+
 def _position_finding(line, in_experience, titles, positions):
     label = ROLE.match(line)
     if not label and not in_experience:
@@ -114,6 +127,8 @@ def _position_finding(line, in_experience, titles, positions):
     parts = re.split(r"\s+at\s+", claim, maxsplit=1, flags=re.I)
     if len(parts) == 1:
         if label and normalized(claim) not in titles:
+            return "Unsupported job title: " + claim[:100]
+        if not label and in_experience and _standalone_title_like(claim) and normalized(claim) not in titles:
             return "Unsupported job title: " + claim[:100]
         return None
 
@@ -145,6 +160,11 @@ def candidate_findings(document, profile, claim_list, externally_verified=""):
         if isinstance(row, dict) and isinstance(row.get("title"), str) and row["title"].strip()
     }
     titles = {title for title, _ in positions}
+    known_degree_labels = {
+        normalized(match.group(0))
+        for degree in _profile_fields(profile, "degree")
+        for match in DEGREE.finditer(degree)
+    }
     findings = []
     for token in sorted(set(m.group().strip() for m in [*YEAR.finditer(document), *NUMBER.finditer(document)])):
         if not has_term(evidence, token) and not has_term(external, token):
@@ -154,10 +174,18 @@ def candidate_findings(document, profile, claim_list, externally_verified=""):
         heading = normalized(line).rstrip(":")
         if heading in EXPERIENCE_HEADINGS:
             in_experience = True
+            continue
         elif heading in OTHER_HEADINGS:
             in_experience = False
-        if DEGREE.search(line) and not any(has_term(normalized(line), degree) for degree in _profile_fields(profile, "degree")):
-            findings.append("Unsupported degree/course in: " + line[:100])
+            continue
+        if DEGREE.search(line):
+            # One genuine degree must not mask an additional invented degree
+            # appearing on the same extracted line.
+            if not any(has_term(normalized(line), degree) for degree in _profile_fields(profile, "degree")):
+                findings.append("Unsupported degree/course in: " + line[:100])
+            for degree_token in DEGREE.finditer(line):
+                if normalized(degree_token.group(0)) not in known_degree_labels:
+                    findings.append("Unsupported degree credential: " + degree_token.group(0) + " in " + line[:100])
         position_error = _position_finding(line, in_experience, titles, positions)
         if position_error:
             findings.append(position_error)

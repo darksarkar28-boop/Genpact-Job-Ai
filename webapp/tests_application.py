@@ -205,6 +205,29 @@ class BackendReviewTests(TestCase):
                     self.assertContains(result, heading, status_code=422)
                     self.assertFalse(result.context["token"])
 
+    def test_standalone_title_headings_do_not_allow_unconfirmed_promotions(self):
+        for title, permitted in [
+            ("Data Engineer", True),
+            ("Senior Data Engineer", False),
+            ("Principal Engineer", False),
+        ]:
+            with self.subTest(title=title):
+                lines = [title if line == "Data Engineer at Example Labs" else line
+                         for line in CV_LINES]
+                result = self.client.post(reverse("application_review"), self.post_data(lines=lines))
+                self.assertEqual(result.status_code, 200 if permitted else 422)
+                if not permitted:
+                    self.assertContains(result, "Unsupported job title: " + title, status_code=422)
+                    self.assertFalse(result.context["token"])
+
+    def test_extra_unconfirmed_degree_on_same_line_is_blocked(self):
+        lines = [line.replace("BSc Computer Science", "BSc Computer Science, PhD Physics")
+                 for line in CV_LINES]
+        result = self.client.post(reverse("application_review"), self.post_data(lines=lines))
+        self.assertEqual(result.status_code, 422)
+        self.assertContains(result, "Unsupported degree credential: PhD", status_code=422)
+        self.assertFalse(result.context["token"])
+
     def test_supported_label_and_narrative_are_preserved(self):
         lines = [*CV_LINES[:4], "I built reporting tools at Example Labs.", *CV_LINES[4:],
                  "Position: data engineer at Example Labs"]
