@@ -117,7 +117,7 @@ def decide(request, signal_id):
             return HttpResponse("Proposal was handled by another session.", status=409)
         ApplicationStatusEvent.objects.create(
             application=app, before=app.status, after=signal.proposed_status,
-            origin=signal.connection.provider,
+            origin=signal.connection.provider, mail_signal=signal,
         )
     messages.success(request, "Approved change saved to your application history.")
     return redirect("application_board")

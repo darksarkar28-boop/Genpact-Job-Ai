@@ -58,7 +58,7 @@ def _revision(user):
 
 def _board(request, form=None, status=200):
     applications = list(
-        _applications(request.user).prefetch_related("events").order_by("-updated_at", "-pk")
+        _applications(request.user).prefetch_related("events__mail_signal").order_by("-updated_at", "-pk")
     )
     return render(request, "webapp/board.html", {
         "applications": applications,

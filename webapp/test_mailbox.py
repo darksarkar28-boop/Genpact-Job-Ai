@@ -129,6 +129,8 @@ class MailboxTests(TestCase):
         )
         self.assertEqual(self.client.post(decision, {"action": "approve"}).status_code, 409)
         self.assertEqual(ApplicationStatusEvent.objects.count(), 1)
+        self.assertEqual(ApplicationStatusEvent.objects.get().mail_signal_id, signal.pk)
+        self.assertContains(self.client.get(reverse("application_board")), "Source email")
 
     def test_replayed_and_out_of_order_mail_cannot_double_apply(self):
         first = self.mail()

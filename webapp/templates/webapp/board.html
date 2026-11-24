@@ -118,6 +118,9 @@
                 <li><time datetime="{{ event.created_at|date:'c' }}">{{ event.created_at|date:"M j, Y H:i" }} UTC</time>:
                   {% if event.before %}{{ event.before }} → {% endif %}{{ event.get_after_display }}
                   ({{ event.origin }})
+                  {% if event.mail_signal and event.mail_signal.source_link %}
+                    <a href="{{ event.mail_signal.source_link }}" target="_blank" rel="noopener noreferrer">Source email</a>
+                  {% endif %}
                 </li>
               {% endfor %}
             </ol>

@@ -49,6 +49,10 @@ class ApplicationStatusEvent(models.Model):
     before = models.CharField(max_length=20, blank=True)
     after = models.CharField(max_length=20, choices=ApplicationStatus.choices)
     origin = models.CharField(max_length=16, default="manual")
+    mail_signal = models.ForeignKey(
+        "MailSignal", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="status_events",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
 
 
