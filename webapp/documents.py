@@ -24,15 +24,16 @@ class DocumentProblem(Exception):
     """An actionable export error that is safe to show to the candidate."""
 
 
+REPO_ROOT = Path(__file__).resolve().parent.parent
 TEMPLATES = (
-    {"key": "classic", "label": "Classic", "description": "Traditional headings with generous spacing.", "margin": "18mm", "font_size": "10pt", "section_rule": True},
-    {"key": "modern", "label": "Modern", "description": "Crisp headings and balanced whitespace.", "margin": "17mm", "font_size": "10pt", "section_rule": False},
-    {"key": "compact", "label": "Compact", "description": "Tighter spacing for dense experience.", "margin": "15mm", "font_size": "9pt", "section_rule": False},
-    {"key": "executive", "label": "Executive", "description": "Roomy layout for senior profiles.", "margin": "20mm", "font_size": "10pt", "section_rule": True},
-    {"key": "minimal", "label": "Minimal", "description": "Simple typography with no decorative rules.", "margin": "19mm", "font_size": "10pt", "section_rule": False},
-    {"key": "academic", "label": "Academic", "description": "Long-form layout for education and research.", "margin": "18mm", "font_size": "10pt", "section_rule": True},
-    {"key": "technical", "label": "Technical", "description": "Compact skills-first layout for engineering roles.", "margin": "16mm", "font_size": "9pt", "section_rule": True},
-    {"key": "clean", "label": "Clean", "description": "Neutral ATS-safe layout for broad use.", "margin": "18mm", "font_size": "10pt", "section_rule": False},
+    {"key": "classic", "label": "Classic", "description": "Stock-inspired banking layout with restrained rules.", "margin": "18mm", "margin_in": 0.71, "font_size": "10pt", "body_pt": 10, "name_pt": 24, "heading_pt": 13, "section_rule": True, "name_align": "center", "font": "Arial", "accent": "1F4E79", "stock": True},
+    {"key": "modern", "label": "Modern", "description": "Clean left-aligned name and compact section rhythm.", "margin": "17mm", "margin_in": 0.67, "font_size": "10pt", "body_pt": 10, "name_pt": 25, "heading_pt": 13, "section_rule": False, "name_align": "left", "font": "Aptos", "accent": "2F5597", "stock": False},
+    {"key": "compact", "label": "Compact", "description": "Dense layout for candidates with more experience.", "margin": "15mm", "margin_in": 0.59, "font_size": "9pt", "body_pt": 9, "name_pt": 22, "heading_pt": 12, "section_rule": False, "name_align": "left", "font": "Calibri", "accent": "333333", "stock": False},
+    {"key": "executive", "label": "Executive", "description": "Roomier typography and stronger section separation.", "margin": "20mm", "margin_in": 0.79, "font_size": "10pt", "body_pt": 10, "name_pt": 27, "heading_pt": 14, "section_rule": True, "name_align": "left", "font": "Georgia", "accent": "1F1F1F", "stock": False},
+    {"key": "minimal", "label": "Minimal", "description": "Neutral monochrome layout with minimal decoration.", "margin": "19mm", "margin_in": 0.75, "font_size": "10pt", "body_pt": 10, "name_pt": 24, "heading_pt": 12, "section_rule": False, "name_align": "center", "font": "Arial", "accent": "222222", "stock": False},
+    {"key": "academic", "label": "Academic", "description": "More whitespace for education, research and long entries.", "margin": "18mm", "margin_in": 0.71, "font_size": "10pt", "body_pt": 10, "name_pt": 24, "heading_pt": 13, "section_rule": True, "name_align": "left", "font": "Times New Roman", "accent": "3F3F3F", "stock": False},
+    {"key": "technical", "label": "Technical", "description": "Skills-forward, compact engineering-oriented layout.", "margin": "16mm", "margin_in": 0.63, "font_size": "9pt", "body_pt": 9, "name_pt": 23, "heading_pt": 12, "section_rule": True, "name_align": "left", "font": "Arial", "accent": "245A7A", "stock": False},
+    {"key": "clean", "label": "Clean", "description": "Balanced ATS-safe layout for broad professional use.", "margin": "18mm", "margin_in": 0.71, "font_size": "10pt", "body_pt": 10, "name_pt": 24, "heading_pt": 13, "section_rule": False, "name_align": "center", "font": "Calibri", "accent": "15543C", "stock": False},
 )
 TEMPLATE_BY_KEY = {item["key"]: item for item in TEMPLATES}
 
@@ -59,10 +60,9 @@ def _snapshot(profile: Profile, document_type: str, payload: dict) -> dict:
     return {"profile": data, "extra": extra}
 
 
-def queue_document_job(user, profile: Profile, payload: dict):
+def prepare_document_request(profile: Profile, payload: dict) -> dict:
     if not profile.revision or not profile.data:
         raise DocumentProblem("Save your master profile before creating an export.")
-
     document_type = payload.get("document_type")
     output_format = payload.get("output_format")
     template_key = payload.get("template_key")
@@ -72,13 +72,23 @@ def queue_document_job(user, profile: Profile, payload: dict):
         raise DocumentProblem("Choose PDF or DOCX.")
     if template_key not in TEMPLATE_BY_KEY:
         raise DocumentProblem("Choose one of the available ATS templates.")
-
-    snapshot = _snapshot(profile, document_type, payload)
-    fingerprint_payload = {
-        "revision": profile.revision,
+    return {
         "document_type": document_type,
         "output_format": output_format,
         "template_key": template_key,
+        "template": TEMPLATE_BY_KEY[template_key],
+        "snapshot": _snapshot(profile, document_type, payload),
+    }
+
+
+def queue_document_job(user, profile: Profile, payload: dict):
+    prepared = prepare_document_request(profile, payload)
+    snapshot = prepared["snapshot"]
+    fingerprint_payload = {
+        "revision": profile.revision,
+        "document_type": prepared["document_type"],
+        "output_format": prepared["output_format"],
+        "template_key": prepared["template_key"],
         "snapshot": snapshot,
     }
     fingerprint = hashlib.sha256(
@@ -98,14 +108,13 @@ def queue_document_job(user, profile: Profile, payload: dict):
         return DocumentJob.objects.create(
             user=user,
             profile_revision=profile.revision,
-            document_type=document_type,
-            output_format=output_format,
-            template_key=template_key,
+            document_type=prepared["document_type"],
+            output_format=prepared["output_format"],
+            template_key=prepared["template_key"],
             fingerprint=fingerprint,
             content_snapshot=snapshot,
         ), True
     except IntegrityError:
-        # A concurrent identical request won the unique (user, fingerprint) race.
         return DocumentJob.objects.get(user=user, fingerprint=fingerprint), False
 
 
@@ -127,12 +136,7 @@ def retry_document_job(job: DocumentJob):
 
 
 def claim_next_job():
-    """Atomically claim one job even when the deployment uses SQLite.
-
-    SQLite ignores SELECT ... FOR UPDATE, so use a compare-and-swap UPDATE on
-    the queued status. Multiple workers may observe the same candidate, but
-    only one can transition it from queued to running.
-    """
+    """Atomically claim one job even on SQLite, which ignores SELECT FOR UPDATE."""
     while True:
         candidate = (
             DocumentJob.objects.filter(status=DocumentJob.Status.QUEUED)
@@ -195,31 +199,84 @@ def _contact(profile):
     return [str(profile.get(key) or "").strip() for key in ("email", "phone", "location") if profile.get(key)]
 
 
-def _document_markdown(job: DocumentJob):
+def _split_name(value):
+    parts = str(value or "").split()
+    if not parts:
+        return "", ""
+    if len(parts) == 1:
+        return parts[0], ""
+    return " ".join(parts[:-1]), parts[-1]
+
+
+def _stock_cv_latex(job: DocumentJob):
+    profile = job.content_snapshot["profile"]
+    first, last = _split_name(profile.get("full_name"))
+    parts = [
+        r"\documentclass[10pt,a4paper,sans]{moderncv}",
+        r"\moderncvstyle{banking}",
+        r"\moderncvcolor{blue}",
+        r"\usepackage[utf8]{inputenc}",
+        r"\usepackage[scale=0.82]{geometry}",
+        rf"\name{{{_tex(first)}}}{{{_tex(last)}}}",
+    ]
+    if profile.get("location"):
+        parts.append(rf"\address{{{_tex(profile['location'])}}}{{}}{{}}")
+    if profile.get("phone"):
+        parts.append(rf"\phone[mobile]{{{_tex(profile['phone'])}}}")
+    if profile.get("email"):
+        parts.append(rf"\email{{{_tex(profile['email'])}}}")
+    parts += [r"\begin{document}", r"\makecvtitle"]
+    if profile.get("summary"):
+        parts += [r"\section{Summary}", rf"\cvitem{{}}{{{_tex(profile['summary'])}}}"]
+    if profile.get("skills"):
+        parts += [r"\section{Skills}", rf"\cvitem{{}}{{{_tex(', '.join(profile['skills']))}}}"]
+    if profile.get("experience"):
+        parts.append(r"\section{Experience}")
+        for row in profile["experience"]:
+            details = " ".join(_lines(row.get("details")))
+            parts.append(
+                rf"\cventry{{{_tex(row.get('dates'))}}}{{{_tex(row.get('title'))}}}"
+                rf"{{{_tex(row.get('employer'))}}}{{}}{{}}{{{_tex(details)}}}"
+            )
+    if profile.get("education"):
+        parts.append(r"\section{Education}")
+        for row in profile["education"]:
+            details = " ".join(_lines(row.get("details")))
+            parts.append(
+                rf"\cventry{{{_tex(row.get('dates'))}}}{{{_tex(row.get('degree'))}}}"
+                rf"{{{_tex(row.get('school'))}}}{{}}{{}}{{{_tex(details)}}}"
+            )
+    parts.append(r"\end{document}")
+    return "\n".join(parts)
+
+
+def _stock_cover_latex(job: DocumentJob):
     profile = job.content_snapshot["profile"]
     extra = job.content_snapshot.get("extra", {})
-    lines = [f"# {profile.get('full_name', '')}", " · ".join(_contact(profile)), ""]
-    if job.document_type == DocumentJob.DocumentType.COVER_LETTER:
-        if extra.get("role") or extra.get("company"):
-            lines += [f"**{extra.get('role', '')}{' — ' if extra.get('role') and extra.get('company') else ''}{extra.get('company', '')}**", ""]
-        lines += [extra.get("body", ""), ""]
-        return "\n".join(lines)
-
-    if profile.get("summary"):
-        lines += ["## Summary", profile["summary"], ""]
-    if profile.get("skills"):
-        lines += ["## Skills", ", ".join(profile["skills"]), ""]
-    if profile.get("experience"):
-        lines += ["## Experience"]
-        for row in profile["experience"]:
-            title = " · ".join(filter(None, [row.get("title"), row.get("employer")]))
-            lines += [f"**{title}**", row.get("dates", ""), row.get("details", ""), ""]
-    if profile.get("education"):
-        lines += ["## Education"]
-        for row in profile["education"]:
-            title = " · ".join(filter(None, [row.get("school"), row.get("degree")]))
-            lines += [f"**{title}**", row.get("dates", ""), row.get("details", ""), ""]
-    return "\n".join(str(line or "") for line in lines)
+    contact = " | ".join(_contact(profile))
+    parts = [
+        r"\documentclass[]{cover}",
+        r"\usepackage{fancyhdr}",
+        r"\pagestyle{fancy}",
+        r"\fancyhf{}",
+        r"\renewcommand{\headrulewidth}{0pt}",
+        r"\begin{document}",
+        rf"\namesection{{}}{{\Huge{{{_tex(profile.get('full_name'))}}}}}{{{_tex(contact)}}}",
+        r"\currentdate{\today}",
+    ]
+    if extra.get("role") or extra.get("company"):
+        target = " — ".join(filter(None, [extra.get("role"), extra.get("company")]))
+        parts.append(rf"\lettercontent{{\textbf{{{_tex(target)}}}}}")
+    for paragraph in _lines(extra.get("body")):
+        parts.append(rf"\lettercontent{{{_tex(paragraph)}}}")
+    parts += [
+        r"\begin{flushright}",
+        r"\closing{Kind regards,}",
+        rf"\signature{{{_tex(profile.get('full_name'))}}}",
+        r"\end{flushright}",
+        r"\end{document}",
+    ]
+    return "\n".join(parts)
 
 
 def _section(title, body, rule):
@@ -231,11 +288,11 @@ def _section(title, body, rule):
     return heading + "\n" + body + "\n"
 
 
-def _document_latex(job: DocumentJob):
+def _article_latex(job: DocumentJob):
     profile = job.content_snapshot["profile"]
     extra = job.content_snapshot.get("extra", {})
     template = TEMPLATE_BY_KEY[job.template_key]
-    rule = template["section_rule"]
+    alignment = "center" if template["name_align"] == "center" else "flushleft"
     parts = [
         rf"\documentclass[{template['font_size']},a4paper]{{article}}",
         r"\usepackage[T1]{fontenc}",
@@ -250,10 +307,10 @@ def _document_latex(job: DocumentJob):
         r"\setlist[itemize]{leftmargin=*,nosep}",
         r"\titleformat{\section}{\large\bfseries}{}{0pt}{}",
         r"\begin{document}",
-        r"\begin{center}",
+        rf"\begin{{{alignment}}}",
         rf"{{\LARGE\textbf{{{_tex(profile.get('full_name'))}}}}}\\",
         _tex(" | ".join(_contact(profile))),
-        r"\end{center}",
+        rf"\end{{{alignment}}}",
         r"\vspace{0.5em}",
     ]
     if job.document_type == DocumentJob.DocumentType.COVER_LETTER:
@@ -269,9 +326,9 @@ def _document_latex(job: DocumentJob):
         return "\n".join(parts)
 
     if profile.get("summary"):
-        parts.append(_section("Summary", "\n\n".join(_tex(x) for x in _lines(profile["summary"])), rule))
+        parts.append(_section("Summary", "\n\n".join(_tex(x) for x in _lines(profile["summary"])), template["section_rule"]))
     if profile.get("skills"):
-        parts.append(_section("Skills", _tex(", ".join(profile["skills"])), rule))
+        parts.append(_section("Skills", _tex(", ".join(profile["skills"])), template["section_rule"]))
     if profile.get("experience"):
         rows = []
         for row in profile["experience"]:
@@ -281,7 +338,7 @@ def _document_latex(job: DocumentJob):
                 text += rf"\hfill \textit{{{_tex(row['dates'])}}}"
             details = "\n\n".join(_tex(x) for x in _lines(row.get("details")))
             rows.append(text + ("\n" + details if details else ""))
-        parts.append(_section("Experience", "\n\n".join(rows), rule))
+        parts.append(_section("Experience", "\n\n".join(rows), template["section_rule"]))
     if profile.get("education"):
         rows = []
         for row in profile["education"]:
@@ -291,9 +348,40 @@ def _document_latex(job: DocumentJob):
                 text += rf"\hfill \textit{{{_tex(row['dates'])}}}"
             details = "\n\n".join(_tex(x) for x in _lines(row.get("details")))
             rows.append(text + ("\n" + details if details else ""))
-        parts.append(_section("Education", "\n\n".join(rows), rule))
+        parts.append(_section("Education", "\n\n".join(rows), template["section_rule"]))
     parts.append(r"\end{document}")
     return "\n".join(parts)
+
+
+def _document_latex(job: DocumentJob):
+    if job.template_key == "classic":
+        if job.document_type == DocumentJob.DocumentType.CV:
+            return _stock_cv_latex(job)
+        return _stock_cover_latex(job)
+    return _article_latex(job)
+
+
+def _worker_payload(job: DocumentJob):
+    return {
+        "document_type": job.document_type,
+        "template": TEMPLATE_BY_KEY[job.template_key],
+        "snapshot": job.content_snapshot,
+    }
+
+
+def _prepare_worker_inputs(workdir: Path, job: DocumentJob):
+    (workdir / "document.tex").write_text(_document_latex(job), encoding="utf-8")
+    (workdir / "document.json").write_text(
+        json.dumps(_worker_payload(job), ensure_ascii=False), encoding="utf-8"
+    )
+    if (
+        job.output_format == DocumentJob.OutputFormat.PDF
+        and job.document_type == DocumentJob.DocumentType.COVER_LETTER
+        and job.template_key == "classic"
+    ):
+        source = REPO_ROOT / "cover_letters"
+        shutil.copy2(source / "cover.cls", workdir / "cover.cls")
+        shutil.copytree(source / "OpenFonts", workdir / "OpenFonts")
 
 
 def _worker_command(workdir: Path, job: DocumentJob):
@@ -303,7 +391,7 @@ def _worker_command(workdir: Path, job: DocumentJob):
         "--security-opt=no-new-privileges", "--pids-limit=128",
         f"--memory={settings.DOCUMENT_WORKER_MEMORY}",
         f"--cpus={settings.DOCUMENT_WORKER_CPUS}",
-        "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
+        "--tmpfs", "/tmp:rw,noexec,nosuid,size=128m",
     ]
     if hasattr(os, "getuid") and hasattr(os, "getgid"):
         command += ["--user", f"{os.getuid()}:{os.getgid()}"]
@@ -332,7 +420,9 @@ def _run_isolated_worker(workdir: Path, job: DocumentJob):
     except subprocess.TimeoutExpired as exc:
         raise DocumentProblem("The document compile exceeded its time limit.") from exc
     if result.returncode:
-        raise DocumentProblem("The isolated document worker could not compile this export.")
+        detail = (result.stderr or result.stdout or "").strip().splitlines()
+        suffix = f" ({detail[-1][:180]})" if detail else ""
+        raise DocumentProblem("The isolated document worker could not compile this export." + suffix)
     output = workdir / f"output.{job.output_format}"
     if not output.is_file() or output.stat().st_size == 0:
         raise DocumentProblem("The document worker completed without producing an artifact.")
@@ -358,6 +448,13 @@ def _pdf_text(path: Path):
     return "\n".join(pages), len(pages)
 
 
+def _pdf_page_count(path: Path):
+    try:
+        return len(PdfReader(str(path)).pages)
+    except Exception as exc:
+        raise DocumentProblem("The DOCX pagination preview could not be inspected.") from exc
+
+
 def _contains_phone(text, phone):
     expected = "".join(ch for ch in str(phone or "") if ch.isdigit())
     actual = "".join(ch for ch in text if ch.isdigit())
@@ -375,7 +472,8 @@ def _verify_order(text: str, job: DocumentJob):
             "Education" if profile.get("education") else "",
         ]
     else:
-        expected += [job.content_snapshot.get("extra", {}).get("body", "").splitlines()[0]]
+        first_line = job.content_snapshot.get("extra", {}).get("body", "").splitlines()[0]
+        expected += [first_line]
     lowered = text.lower()
     positions = [lowered.find(str(item).strip().lower()) for item in expected if str(item).strip()]
     return all(pos >= 0 for pos in positions) and positions == sorted(positions)
@@ -384,8 +482,15 @@ def _verify_order(text: str, job: DocumentJob):
 def verify_artifact(path: Path, job: DocumentJob):
     if job.output_format == DocumentJob.OutputFormat.PDF:
         text, pages = _pdf_text(path)
+        pagination_source = "generated PDF"
     else:
-        text, pages = _docx_text(path), None
+        text = _docx_text(path)
+        rendered_pdf = path.with_suffix(".pdf")
+        if not rendered_pdf.is_file():
+            raise DocumentProblem("The DOCX worker did not produce its pagination proof PDF.")
+        pages = _pdf_page_count(rendered_pdf)
+        pagination_source = "headless LibreOffice rendering of generated DOCX"
+
     normalized = " ".join(text.split())
     if len(normalized) < 20:
         raise DocumentProblem("The exported document has no usable text layer.")
@@ -402,14 +507,15 @@ def verify_artifact(path: Path, job: DocumentJob):
         raise DocumentProblem("The exported text order does not match the single-column source order.")
 
     warnings = []
-    if pages and job.document_type == DocumentJob.DocumentType.CV and pages > 3:
+    if job.document_type == DocumentJob.DocumentType.CV and pages > 3:
         warnings.append(f"CV is {pages} pages; review pagination before sending.")
-    if pages and job.document_type == DocumentJob.DocumentType.COVER_LETTER and pages > 2:
+    if job.document_type == DocumentJob.DocumentType.COVER_LETTER and pages > 2:
         warnings.append(f"Cover letter is {pages} pages; review pagination before sending.")
     return {
         "readable": True,
         "characters": len(normalized),
         "pages": pages,
+        "pagination_source": pagination_source,
         "reading_order": "verified against the single-column source sequence",
         "contact_fields_checked": [key for key in ("email", "phone") if profile.get(key)],
         "warnings": warnings,
@@ -425,8 +531,7 @@ def process_claimed_job(job: DocumentJob):
     try:
         with tempfile.TemporaryDirectory(prefix=f"job-{job.pk}-", dir=staging_root) as temp:
             workdir = Path(temp)
-            (workdir / "document.tex").write_text(_document_latex(job), encoding="utf-8")
-            (workdir / "document.md").write_text(_document_markdown(job), encoding="utf-8")
+            _prepare_worker_inputs(workdir, job)
             output = _run_isolated_worker(workdir, job)
             verification = verify_artifact(output, job)
             digest = hashlib.sha256(output.read_bytes()).hexdigest()
