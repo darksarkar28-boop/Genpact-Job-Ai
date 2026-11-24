@@ -1,0 +1,10 @@
+{% extends "webapp/base.html" %}
+{% block title %}AI application workbench{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>AI application workbench</h1><p class="lead">Rank opportunities, review duplicate suggestions, and prepare application drafts.</p></div></div>
+<section class="card stack">
+<form method="post">{% csrf_token %}{{ form.as_p }}<button class="primary" type="submit">Run selected workflow</button></form>
+<p class="hint">Results are not saved or submitted automatically. Review candidate facts and independently check company-specific claims against original sources before using any draft.</p>
+</section>
+{% if output %}<section class="card stack"><h2>Review result</h2><pre class="preserve" style="white-space:pre-wrap;overflow-wrap:anywhere">{{ output }}</pre></section>{% endif %}
+{% endblock %}

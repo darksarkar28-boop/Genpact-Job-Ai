@@ -1,6 +1,7 @@
 ---
 name: application-reviewer
 description: Hiring-manager proxy that researches the company and critiques a drafted CV and cover letter against the posting and the candidate profile. Dispatched by /apply Step 3 with the drafts and posting inline. Reads and researches only; returns edits and research as text and cannot edit or write files.
+model: opus
 tools: Read, Glob, Grep, WebFetch, WebSearch, Bash
 ---
 

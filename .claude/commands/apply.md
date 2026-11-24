@@ -86,6 +86,8 @@ After presenting the evaluation, ask the user:
 
 ## Step 2: DRAFTER - Draft CV + Cover Letter
 
+**Configured model routing:** after Step 1 and the user's explicit consent to external processing, when `JOB_AI_MODEL_CONFIG` is set use `python -m tools.routed_workflows apply --consent` with stdin JSON (`profile`: confirmed facts, `job`: object with `key` and integrity-gated posting `text`, optional verified `employer_id`). This runs frontier draft and review calls and returns reviewed plain-text suggestions, not executable code. Apply only grounded text to the existing templates; do not run generated commands. Treat returned research leads and source_checks as unverified until independently evaluated, independently check their sources in Step 3 and retain every compilation and grounding check below. Do not silently retry using an unbudgeted model on routing failure. Unconfigured installations retain the existing workflow.
+
 You already have `01-candidate-profile.md` and `04-job-evaluation.md` in context from Step 1. **Do not re-read them.**
 
 Read only the reference files you do not yet have:
@@ -131,7 +133,7 @@ Write both files to disk. Keep the exact text of both drafts in working memory �
 
 ## Step 3: REVIEWER - Research & Critique
 
-Use the **Agent tool** to spawn the reviewer as **`application-reviewer`** (`subagent_type: application-reviewer`, the shipped definition in `.claude/agents/application-reviewer.md`: it can read, search and fetch but not edit or write, so every edit and the company research come back as text for you to apply). The reviewer gets a fresh context, so pass the drafts **inline in the prompt** below (do not make the reviewer Read them). Scope the reviewer's file reads to content-critique essentials only — the reviewer does not need the template structure files (`05`, `06`) to critique content, since those govern structural/toolchain concerns the drafter already applied.
+For the configured path, use the already-returned frontier reviewer findings instead of dispatching a second unbudgeted reviewer; perform the independent source verification and grounding audit below yourself. For the legacy path, use the **Agent tool** to spawn the reviewer as **`application-reviewer`** (`subagent_type: application-reviewer`, the shipped definition in `.claude/agents/application-reviewer.md`: it can read, search and fetch but not edit or write, so every edit and the company research come back as text for you to apply). The reviewer gets a fresh context, so pass the drafts **inline in the prompt** below (do not make the reviewer Read them). Scope the reviewer's file reads to content-critique essentials only — the reviewer does not need the template structure files (`05`, `06`) to critique content, since those govern structural/toolchain concerns the drafter already applied.
 
 Replace `<COMPANY>`, `<ROLE>`, `<INSERT_JOB_POSTING_TEXT_HERE>`, `<INSERT_CV_DRAFT_HERE>`, and `<INSERT_COVER_LETTER_DRAFT_HERE>` with actual values before dispatching.
 
