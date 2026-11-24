@@ -148,6 +148,7 @@
           {% for error in release_report.errors %}<div>{{ error }}</div>{% endfor %}
         </div>
       {% endif %}
+      {% include "webapp/review_coverage.html" with report=release_report only %}
     {% endif %}
     {% if successful_cvs %}
       <form action="{% url 'document_release_review' %}" method="post">
@@ -177,10 +178,7 @@
         </div>
         <div class="field">
           <label for="release_headings">CV section headings in visible order</label>
-          <textarea id="release_headings" name="visual_headings" rows="4">{{ release_form_data.visual_headings|default:"Summary
-Skills
-Experience
-Education" }}</textarea>
+          <textarea id="release_headings" name="visual_headings" rows="4">{{ release_form_data.visual_headings|default:default_headings }}</textarea>
         </div>
         <div class="field">
           <label for="release_keywords">Posting keywords (JSON)</label>
@@ -217,7 +215,7 @@ Education" }}</textarea>
         <div class="job-actions">
           <span class="status status-{{ job.status }}">{{ job.get_status_display }}</span>
           {% if job.status == "succeeded" %}
-            {% if job.output_format == "pdf" %}<a class="secondary" href="{% url 'document_download' job.pk %}?preview=1" target="_blank" rel="noopener">Preview draft PDF</a>{% endif %}
+            <a class="secondary" href="{% url 'document_download' job.pk %}?preview=1" target="_blank" rel="noopener">Preview draft pages</a>
             {% if job.release_approved %}
               <a class="primary" href="{% url 'document_download' job.pk %}">Download approved {{ job.output_format|upper }}</a>
             {% else %}

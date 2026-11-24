@@ -10,6 +10,7 @@ from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
+from pypdf import PdfReader
 
 from .documents import TEMPLATES, artifact_file
 from .models import DocumentJob, Profile
@@ -38,21 +39,25 @@ class DocumentWorkerSmokeTests(TestCase):
         self.assertIsNotNone(artifact)
         data = artifact.read_bytes()
         self.assertEqual(hashlib.sha256(data).hexdigest(), job.artifact_sha256)
-        if job.output_format == DocumentJob.OutputFormat.PDF:
-            preview = self.client.get(status["preview_url"])
-            self.assertEqual(preview["Content-Type"], "application/pdf")
-            self.assertIn("inline", preview["Content-Disposition"])
-            self.assertEqual(b"".join(preview.streaming_content), data)
-        else:
+        preview = self.client.get(status["preview_url"])
+        self.assertEqual(preview["Content-Type"], "application/pdf")
+        self.assertIn("inline", preview["Content-Disposition"])
+        draft = b"".join(preview.streaming_content)
+        self.assertNotEqual(draft, data)
+        pages = PdfReader(io.BytesIO(draft)).pages
+        self.assertEqual(len(pages), job.verification["pages"])
+        for page in pages:
+            self.assertIn("DRAFT - review copy", page.extract_text())
+        if job.output_format == DocumentJob.OutputFormat.DOCX:
             with zipfile.ZipFile(io.BytesIO(data)) as docx:
                 self.assertIn("word/document.xml", docx.namelist())
         self.assertEqual(job.verification["contact_fields_checked"], ["email", "phone"])
         self.assertGreaterEqual(job.verification["pages"], 1)
         return job
 
-    def _approve_generated(self, owner, profile, cv_job, cover_job=None):
+    def _review_generated(self, owner, profile, cv_job, cover_job=None):
         self.client.force_login(owner)
-        response = self.client.post(reverse("document_release_review"), {
+        return self.client.post(reverse("document_release_review"), {
             "cv_job_id": cv_job.pk,
             "cover_job_id": cover_job.pk if cover_job else "",
             "employer": "Example Labs",
@@ -63,7 +68,11 @@ class DocumentWorkerSmokeTests(TestCase):
             "company_citations": "[]",
             "confirm_visual": "on",
         })
-        self.assertRedirects(response, reverse("documents"))
+
+    def _approve_generated(self, owner, profile, cv_job, cover_job=None):
+        response = self._review_generated(owner, profile, cv_job, cover_job)
+        self.assertContains(response, "Posting keyword coverage")
+        self.assertContains(response, "1/1 exact")
         cv_job.refresh_from_db()
         self.assertIn("release_approval", cv_job.verification)
         if cover_job:
@@ -160,6 +169,22 @@ class DocumentWorkerSmokeTests(TestCase):
             self._assert_exact_final_download(edited_cover_pdf)
             self._approve_generated(owner, profile, cv_docxs["modern"], edited_cover_docx)
             self._assert_exact_final_download(edited_cover_docx)
+
+            # The final document reviewer also checks the actual edited letter,
+            # including the rendered proof for an editable Word document.
+            for output_format, cv_job in (("pdf", cv_pdfs["classic"]), ("docx", cv_docxs["modern"])):
+                with self.subTest(unsupported_letter=output_format):
+                    unsupported = self._process(owner, profile, {
+                        "document_type": "cover_letter", "output_format": output_format,
+                        "template_key": "clean", "cover_letter_body": letter + "\nBSc Computer Science, BSc Physics",
+                        "company": "Example Labs", "role": "Engineer",
+                    })
+                    result = self._review_generated(owner, profile, cv_job, unsupported)
+                    self.assertContains(result, "Unsupported degree/course: BSc Physics", status_code=422)
+                    self.assertContains(result, "Posting keyword coverage", status_code=422)
+                    unsupported.refresh_from_db()
+                    self.assertNotIn("release_approval", unsupported.verification)
+                    self.assertEqual(self.client.get(reverse("document_download", args=[unsupported.pk])).status_code, 403)
 
             # Approval is also bound to the current saved profile revision.
             Profile.objects.filter(pk=profile.pk).update(revision=profile.revision + 1)

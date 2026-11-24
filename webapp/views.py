@@ -1,3 +1,6 @@
+import hashlib
+import io
+
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import login
@@ -9,12 +12,13 @@ from django.http import FileResponse, Http404, HttpResponseForbidden, JsonRespon
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from .documents import (
-    DocumentProblem, TEMPLATES, artifact_file, prepare_document_request,
+    DocumentProblem, TEMPLATES, artifact_file, draft_preview, prepare_document_request,
     queue_document_job, release_approval_matches, retry_document_job, review_pdf_file,
 )
 from .forms import EducationSet, ExperienceSet, ImportForm, ProfileForm
@@ -32,8 +36,11 @@ def home(request):
 @never_cache
 @require_http_methods(["GET", "POST"])
 def signup(request):
+    next_url = request.POST.get("next") or request.GET.get("next", "")
+    if not next_url.startswith("/") or not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}, require_https=request.is_secure()):
+        next_url = ""
     if request.user.is_authenticated:
-        return redirect("workspace")
+        return redirect(next_url or "workspace")
     form = UserCreationForm(request.POST if request.method == "POST" else None)
     if request.method == "POST" and form.is_valid():
         try:
@@ -45,8 +52,8 @@ def signup(request):
             form.add_error("username", "This username is already in use.")
         else:
             login(request, user)
-            return redirect("workspace")
-    return render(request, "webapp/signup.html", {"form": form})
+            return redirect(next_url or "workspace")
+    return render(request, "webapp/signup.html", {"form": form, "next": next_url})
 
 
 def _owned_profile(request):
@@ -162,6 +169,7 @@ def _document_page(
         "preview": preview,
         "release_report": release_report,
         "release_form_data": release_form_data or {},
+        "default_headings": "Summary\nSkills\nExperience\nEducation",
         "successful_cvs": successful_cvs,
         "successful_covers": successful_covers,
         "has_active_jobs": any(job.status in (DocumentJob.Status.QUEUED, DocumentJob.Status.RUNNING) for job in jobs),
@@ -235,7 +243,7 @@ def document_status(request, job_id):
         payload["review_required"] = not approved
         if approved:
             payload["download_url"] = reverse("document_download", args=[job.pk])
-        if job.output_format == DocumentJob.OutputFormat.PDF:
+        if review_pdf_file(job):
             payload["preview_url"] = reverse("document_download", args=[job.pk]) + "?preview=1"
     return JsonResponse(payload)
 
@@ -244,31 +252,29 @@ def document_status(request, job_id):
 @never_cache
 @require_GET
 def document_download(request, job_id):
-    import hashlib
-
     job = get_object_or_404(DocumentJob, pk=job_id, user=request.user)
     path = artifact_file(job)
     if job.status != DocumentJob.Status.SUCCEEDED or path is None:
         raise Http404("Document artifact is unavailable.")
+    if request.GET.get("preview") == "1":
+        proof = review_pdf_file(job)
+        if proof is None:
+            raise Http404("Document preview is unavailable.")
+        return FileResponse(draft_preview(proof), filename=f"draft-{path.stem}.pdf", content_type="application/pdf")
+
+    profile = _owned_profile(request)
+    if not release_approval_matches(job, request.user.pk, profile.revision):
+        return HttpResponseForbidden(
+            "Final download is locked until these exact generated files pass the application review."
+        )
+    data = path.read_bytes()
+    if hashlib.sha256(data).hexdigest() != job.artifact_sha256:
+        return HttpResponseForbidden("Final download is locked because the approved artifact changed.")
     content_type = {
         DocumentJob.OutputFormat.PDF: "application/pdf",
         DocumentJob.OutputFormat.DOCX: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     }[job.output_format]
-    inline = job.output_format == DocumentJob.OutputFormat.PDF and request.GET.get("preview") == "1"
-    if not inline:
-        profile = _owned_profile(request)
-        if not release_approval_matches(job, request.user.pk, profile.revision):
-            return HttpResponseForbidden(
-                "Final download is locked until these exact generated files pass the application review."
-            )
-        if hashlib.sha256(path.read_bytes()).hexdigest() != job.artifact_sha256:
-            return HttpResponseForbidden("Final download is locked because the approved artifact changed.")
-    return FileResponse(
-        path.open("rb"),
-        as_attachment=not inline,
-        filename=path.name,
-        content_type=content_type,
-    )
+    return FileResponse(io.BytesIO(data), as_attachment=True, filename=path.name, content_type=content_type)
 
 
 @login_required
@@ -364,23 +370,24 @@ def approve_document_release(request):
 
     approved_at = timezone.now().isoformat()
     application_jobs = [job.pk for job in jobs]
-    for job in jobs:
-        verification = dict(job.verification or {})
-        verification["release_approval"] = {
-            "user_id": request.user.pk,
-            "profile_revision": profile.revision,
-            "artifact_sha256": job.artifact_sha256,
-            "approved_at": approved_at,
-            "application_jobs": application_jobs,
-        }
-        job.verification = verification
-        job.save(update_fields=["verification", "updated_at"])
+    with transaction.atomic():
+        for job in jobs:
+            verification = dict(job.verification or {})
+            verification["release_approval"] = {
+                "user_id": request.user.pk,
+                "profile_revision": profile.revision,
+                "artifact_sha256": job.artifact_sha256,
+                "approved_at": approved_at,
+                "application_jobs": application_jobs,
+            }
+            job.verification = verification
+            job.save(update_fields=["verification", "updated_at"])
 
     messages.success(
         request,
         "Application review passed. Final downloads are unlocked for the exact approved files.",
     )
-    return redirect("documents")
+    return _document_page(request, release_report=report, release_form_data=request.POST)
 
 
 @login_required

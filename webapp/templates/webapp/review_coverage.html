@@ -1,0 +1,19 @@
+{% if report.verified_sources %}
+  <h3>Independently checked public sources</h3>
+  <ul>{% for source in report.verified_sources %}
+    <li>{{ source.claim }} <a href="{{ source.url }}" rel="noopener noreferrer">{{ source.url }}</a></li>
+  {% endfor %}</ul>
+{% endif %}
+{% if report.coverage %}
+  <h3>Posting keyword coverage</h3>
+  <p class="hint">Coverage counts exact matches out of all posting terms. Synonyms are counted separately.</p>
+  <ul>{% for priority, summary in report.coverage.summary.items %}
+    <li>{{ priority|capfirst }}: {{ summary.covered }}/{{ summary.total }} exact, {{ summary.synonym_only }} synonym-only, {{ summary.missing }} missing</li>
+  {% endfor %}</ul>
+  <table>
+    <thead><tr><th>Term</th><th>Priority</th><th>Status</th></tr></thead>
+    <tbody>{% for item in report.coverage.keywords %}
+      <tr><td>{{ item.term }}</td><td>{{ item.priority }}</td><td>{{ item.status }}</td></tr>
+    {% endfor %}</tbody>
+  </table>
+{% endif %}

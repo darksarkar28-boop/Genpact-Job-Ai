@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import shutil
@@ -15,7 +16,8 @@ from django.conf import settings
 from django.db import IntegrityError
 from django.db.models import F
 from django.utils import timezone
-from pypdf import PdfReader
+from pypdf import PdfReader, PdfWriter, Transformation
+from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from .models import DocumentJob, Profile
 
@@ -201,6 +203,33 @@ def release_approval_matches(job: DocumentJob, user_id: int, profile_revision: i
         and approval.get("profile_revision") == profile_revision
         and approval.get("artifact_sha256") == job.artifact_sha256
     )
+
+
+def draft_preview(proof: Path) -> io.BytesIO:
+    """Show the actual rendered pages with a visible draft footer on every page."""
+    label = PdfWriter().add_blank_page(width=150, height=15)
+    label[NameObject("/Resources")] = DictionaryObject({
+        NameObject("/Font"): DictionaryObject({NameObject("/F1"): DictionaryObject({
+            NameObject("/Type"): NameObject("/Font"),
+            NameObject("/Subtype"): NameObject("/Type1"),
+            NameObject("/BaseFont"): NameObject("/Helvetica-Bold"),
+        })}),
+    })
+    contents = DecodedStreamObject()
+    contents.set_data(b"q 1 g 0 0 150 15 re f 0.25 g BT /F1 9 Tf 3 3 Td (DRAFT - review copy) Tj ET Q")
+    label.replace_contents(contents)
+    output = io.BytesIO()
+    with proof.open("rb") as source:
+        writer = PdfWriter()
+        for original in PdfReader(source).pages:
+            page = writer.add_page(original)
+            if page.rotation:
+                page.transfer_rotation_to_content()
+            position = Transformation().translate(float(page.cropbox.left) + 8, float(page.cropbox.bottom) + 4)
+            page.merge_transformed_page(label, position)
+        writer.write(output)
+    output.seek(0)
+    return output
 
 
 _LATEX_ESCAPE = str.maketrans({

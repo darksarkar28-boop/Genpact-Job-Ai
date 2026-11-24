@@ -179,6 +179,105 @@ class BackendReviewTests(TestCase):
                 self.assertEqual(response.status_code, 422)
                 self.assertFalse(response.context["report"]["allowed"])
 
+    def test_declared_title_must_match_the_complete_saved_title(self):
+        for label in ("Role", "Job title", "Position"):
+            lines = [*CV_LINES, f"{label}: Senior Data Engineer"]
+            with self.subTest(label=label):
+                result = self.client.post(reverse("application_review"), self.post_data(lines=lines))
+                self.assertEqual(result.status_code, 422)
+                self.assertContains(result, "Unsupported job title: Senior Data Engineer", status_code=422)
+                self.assertFalse(result.context["token"])
+
+    def test_experience_heading_must_match_a_single_saved_position(self):
+        profile = Profile.objects.get(user=self.user)
+        profile.data["experience"].append({"title": "Lead Analyst", "employer": "Second Labs"})
+        profile.save(update_fields=["data"])
+        for heading, allowed in [
+            ("Lead Analyst at Second Labs", True), ("Lead Analyst at Example Labs", False),
+            ("Senior Data Engineer at Example Labs", False),
+        ]:
+            lines = [heading if line == "Data Engineer at Example Labs" else line for line in CV_LINES]
+            with self.subTest(heading=heading):
+                result = self.client.post(reverse("application_review"), self.post_data(lines=lines))
+                self.assertEqual(result.status_code, 200 if allowed else 422)
+                self.assertEqual(result.context["report"]["allowed"], allowed)
+                if not allowed:
+                    self.assertContains(result, heading, status_code=422)
+                    self.assertFalse(result.context["token"])
+
+    def test_standalone_title_headings_do_not_allow_unconfirmed_promotions(self):
+        for title, permitted in [
+            ("Data Engineer", True),
+            ("Senior Data Engineer", False),
+            ("Principal Engineer", False),
+        ]:
+            with self.subTest(title=title):
+                lines = [title if line == "Data Engineer at Example Labs" else line
+                         for line in CV_LINES]
+                result = self.client.post(reverse("application_review"), self.post_data(lines=lines))
+                self.assertEqual(result.status_code, 200 if permitted else 422)
+                if not permitted:
+                    self.assertContains(result, "Unsupported job title: " + title, status_code=422)
+                    self.assertFalse(result.context["token"])
+
+    def test_extra_unconfirmed_degree_on_same_line_is_blocked(self):
+        lines = [line.replace("BSc Computer Science", "BSc Computer Science, PhD Physics")
+                 for line in CV_LINES]
+        result = self.client.post(reverse("application_review"), self.post_data(lines=lines))
+        self.assertEqual(result.status_code, 422)
+        self.assertContains(result, "Unsupported degree credential: PhD", status_code=422)
+        self.assertFalse(result.context["token"])
+
+    def test_unconfirmed_second_bsc_blocks_review_and_release(self):
+        # Regression from the hosted failure on febefe2: the degree prefix
+        # BSc is genuine, but Physics is not in this candidate's profile.
+        lines = [line.replace("BSc Computer Science", "BSc Computer Science, BSc Physics")
+                 for line in CV_LINES]
+        review = self.client.post(reverse("application_review"), self.post_data(lines=lines))
+        self.assertEqual(review.status_code, 422)
+        self.assertContains(review, "Unsupported degree/course: BSc Physics", status_code=422)
+        self.assertFalse(review.context["report"]["allowed"])
+        self.assertFalse(review.context["token"])
+
+        attempted_release = self.client.post(reverse("application_review"),
+            self.post_data(lines=lines, action="export"))
+        self.assertEqual(attempted_release.status_code, 422)
+        self.assertContains(attempted_release, "Export denied", status_code=422)
+        self.assertNotEqual(attempted_release.get("Content-Type"), "application/zip")
+
+    def test_two_distinct_confirmed_bsc_degrees_can_be_exported(self):
+        saved = Profile.objects.get(user=self.user)
+        saved.data["education"].append({
+            "degree": "BSc Physics", "school": "Second University", "dates": "2019 - 2024",
+        })
+        saved.save(update_fields=["data"])
+        lines = [line.replace("BSc Computer Science", "BSc Computer Science, BSc Physics")
+                 for line in CV_LINES]
+        final_pdf = pdf(lines)
+
+        def request_data(action="review", token=""):
+            return self.post_data(action=action, token=token, extra={
+                "cv_pdf": SimpleUploadedFile("confirmed.pdf", final_pdf, content_type="application/pdf"),
+            })
+
+        review = self.client.post(reverse("application_review"), request_data())
+        self.assertEqual(review.status_code, 200, review.content[:300])
+        self.assertTrue(review.context["report"]["allowed"])
+        token = review.context["token"]
+        self.assertTrue(token)
+        released = self.client.post(reverse("application_review"), request_data("export", token))
+        self.assertEqual(released.status_code, 200)
+        self.assertEqual(released["Content-Type"], "application/zip")
+        with zipfile.ZipFile(io.BytesIO(released.content)) as archive:
+            self.assertEqual(archive.read("validated_cv.pdf"), final_pdf)
+
+    def test_supported_label_and_narrative_are_preserved(self):
+        lines = [*CV_LINES[:4], "I built reporting tools at Example Labs.", *CV_LINES[4:],
+                 "Position: data engineer at Example Labs"]
+        result = self.client.post(reverse("application_review"), self.post_data(lines=lines))
+        self.assertEqual(result.status_code, 200)
+        self.assertTrue(result.context["report"]["allowed"])
+
     def test_cv_headings_out_of_visual_order_block(self):
         lines = [line for line in CV_LINES if line not in ("Experience", "Education")]
         lines.insert(2, "Education")
@@ -234,6 +333,24 @@ class BackendReviewTests(TestCase):
             self.post_data(extra={"claims": json.dumps([{"claim": "Python SQL", "evidence": "invented award"}])}))
         self.assertEqual(response.status_code, 422)
         self.assertContains(response, "Candidate claim", status_code=422)
+
+    def test_declared_claim_requires_a_quote_that_supports_that_claim(self):
+        claim = "Designed municipal transit infrastructure."
+        response = self.client.post(reverse("application_review"), self.post_data(
+            lines=[*CV_LINES, claim],
+            extra={"claims": json.dumps([{"claim": claim, "evidence": "Data Engineer"}])},
+        ))
+        self.assertEqual(response.status_code, 422)
+        self.assertContains(response, claim, status_code=422)
+        self.assertFalse(response.context["token"])
+
+        supported = self.client.post(reverse("application_review"), self.post_data(extra={
+            "claims": json.dumps([{
+                "claim": "Improved throughput by 25%", "evidence": "Improved throughput by 25% for 50 clients.",
+            }]),
+        }))
+        self.assertEqual(supported.status_code, 200)
+        self.assertTrue(supported.context["report"]["allowed"])
 
 
 class PureAuditTests(TestCase):

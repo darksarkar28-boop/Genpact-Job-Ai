@@ -44,25 +44,7 @@
         <p class="errorlist"><strong>Blocked:</strong> correct the following issues before release.</p>
         <ul>{% for error in report.errors %}<li>{{ error }}</li>{% endfor %}</ul>
       {% endif %}
-      {% if report.verified_sources %}
-        <h3>Independently checked public sources</h3>
-        <ul>{% for source in report.verified_sources %}
-          <li><a href="{{ source.url }}" rel="noopener noreferrer">{{ source.url }}</a>: {{ source.claim }}</li>
-        {% endfor %}</ul>
-      {% endif %}
-      {% if report.coverage %}
-        <h3>Posting keyword coverage</h3>
-        <p class="hint">Exact matches / all terms; synonyms are counted separately.</p>
-        <ul>{% for priority, summary in report.coverage.summary.items %}
-          <li>{{ priority|capfirst }}: {{ summary.covered }}/{{ summary.total }} exact; {{ summary.synonym_only }} synonym-only; {{ summary.missing }} missing</li>
-        {% endfor %}</ul>
-        <table>
-          <thead><tr><th>Term</th><th>Priority</th><th>Status</th></tr></thead>
-          <tbody>{% for item in report.coverage.keywords %}
-            <tr><td>{{ item.term }}</td><td>{{ item.priority }}</td><td>{{ item.status }}</td></tr>
-          {% endfor %}</tbody>
-        </table>
-      {% endif %}
+      {% include "webapp/review_coverage.html" with report=report only %}
       <p class="hint">{{ report.note }}</p>
     {% else %}
       <p>Verification identifies missing ATS terms, unsupported dates, metrics, degrees and employers, incomplete contact text, section-order problems and unsupported company-specific statements.</p>

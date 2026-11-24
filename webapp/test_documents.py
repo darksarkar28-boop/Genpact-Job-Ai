@@ -115,7 +115,8 @@ class DocumentExportTests(TestCase):
             "confirm_visual": "on",
         }
         response = self.client.post(reverse("document_release_review"), payload)
-        self.assertRedirects(response, reverse("documents"))
+        self.assertContains(response, "Posting keyword coverage")
+        self.assertContains(response, "1/1 exact")
         cv_job.refresh_from_db()
         if cover_job:
             cover_job.refresh_from_db()
@@ -169,6 +170,8 @@ class DocumentExportTests(TestCase):
         self.assertIn("preview_url", status.json())
         self.assertNotIn("download_url", status.json())
         self.assertTrue(status.json()["review_required"])
+        studio = self.client.get(reverse("documents"))
+        self.assertContains(studio, '>Summary\nSkills\nExperience\nEducation</textarea>')
         preview = self.client.get(reverse("document_download", args=[job.pk]) + "?preview=1")
         self.assertEqual(preview.status_code, 200)
         self.assertEqual(preview["Content-Type"], "application/pdf")
