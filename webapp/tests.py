@@ -1,6 +1,8 @@
 """Exercise the same account, import, review and save endpoints as the browser."""
 import io
+import subprocess
 import zipfile
+from unittest.mock import patch
 from xml.sax.saxutils import escape
 
 from django.contrib.auth import get_user_model
@@ -188,6 +190,22 @@ class OnboardingTests(TestCase):
         response = self.client.generic("POST", reverse("import"), CONTENT_LENGTH=str(9 * 1024 * 1024))
         self.assertEqual(response.status_code, 413)
 
+    def test_assisted_worker_timeout_falls_back_to_local_review(self):
+        run_worker = subprocess.run
+
+        def stall_assistance(command, **kwargs):
+            if "--ai" in command:
+                raise subprocess.TimeoutExpired(command, kwargs["timeout"])
+            return run_worker(command, **kwargs)
+
+        with patch("webapp.importers.subprocess.run", side_effect=stall_assistance) as worker:
+            review = self.client.post(reverse("import"), {
+                "document": SimpleUploadedFile("resume.docx", docx(RESUME)), "ai_assist": "on",
+            })
+        self.assertEqual([call.kwargs["timeout"] for call in worker.call_args_list], [45, 12])
+        self.assertEqual(form_values(review)["full_name"], "Mira Das")
+        self.assertFalse(Profile.objects.get(user=self.owner).data)
+
     def test_private_operations_require_session_and_csrf(self):
         public = Client()
         for name in ("workspace", "edit", "import"):
@@ -195,3 +213,48 @@ class OnboardingTests(TestCase):
         guarded = Client(enforce_csrf_checks=True)
         guarded.force_login(self.owner)
         self.assertEqual(guarded.post(reverse("edit"), {"full_name": "unsaved"}).status_code, 403)
+
+
+class PublicResearchTests(TestCase):
+    def test_shared_read_only_and_expiry(self):
+        import tempfile
+        from pathlib import Path
+        from django.test import override_settings
+        from tools.shared_research_cache import ResearchCache
+
+        with tempfile.TemporaryDirectory() as root, override_settings(DATA_DIR=Path(root)):
+            cache = ResearchCache(Path(root) / "public_research.sqlite3")
+            cache.get_or_refresh("IN-MCA:EXAMPLE", lambda key: [
+                {"url": "https://example.com/company", "summary": "Public company information"},
+            ])
+            endpoint = reverse("company-research")
+            self.assertEqual(self.client.get(endpoint, {"employer_id": "IN-MCA:EXAMPLE"}).status_code, 302)
+            for name in ("research_reader_a", "research_reader_b"):
+                reader = Client()
+                reader.force_login(get_user_model().objects.create_user(name))
+                response = reader.get(endpoint, {"employer_id": "IN-MCA:EXAMPLE"})
+                self.assertEqual(response.status_code, 200)
+                self.assertTrue(response.json()["requires_verification"])
+                self.assertEqual(reader.get(endpoint, {"employer_id": "US:EXAMPLE"}).status_code, 404)
+                self.assertEqual(reader.post(endpoint, {"employer_id": "IN-MCA:EXAMPLE"}).status_code, 405)
+
+
+class RoutedWorkbenchTests(TestCase):
+    def test_consent_and_account_scope(self):
+        from unittest.mock import patch
+        account = get_user_model().objects.create_user("routed_owner")
+        other = get_user_model().objects.create_user("routed_other")
+        Profile.objects.create(user=account, data={"full_name": "Owner Example"}, revision=1)
+        Profile.objects.create(user=other, data={"full_name": "Other Example"}, revision=1)
+        endpoint = reverse("workbench")
+        self.assertEqual(self.client.get(endpoint).status_code, 302)
+        self.client.force_login(account)
+        with patch("webapp.routed_views.run", return_value={"ok": True}) as execute:
+            response = self.client.post(endpoint, {"action": "rank", "postings": "Python developer"})
+            self.assertEqual(response.status_code, 422)
+            execute.assert_not_called()
+            response = self.client.post(endpoint, {"action": "rank", "postings": "Python developer", "consent": "on"})
+            self.assertEqual(response.status_code, 200)
+            payload = execute.call_args.args[1]
+            self.assertEqual(payload["profile"]["full_name"], "Owner Example")
+            self.assertNotIn("Other Example", repr(payload))

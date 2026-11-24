@@ -11,8 +11,12 @@ class ImportForm(forms.Form):
         widget=forms.ClearableFileInput(attrs={"accept": ".pdf,.docx,.zip", "aria-describedby": "file-types"}),
     )
 
+    ai_assist = forms.BooleanField(required=False, label="Optional AI assistance: send the document text to the configured model provider")
+
     def clean_document(self):
         document = self.cleaned_data["document"]
+        if len(self.files) != 1 or (hasattr(self.files, "getlist") and len(self.files.getlist("document")) > 1):
+            raise forms.ValidationError("Choose one document to import at a time.")
         if document.size > MAX_UPLOAD_BYTES:
             raise forms.ValidationError("Choose a file up to 8 MiB.")
         if document.name.rsplit(".", 1)[-1].lower() not in SUPPORTED_TYPES:
@@ -53,3 +57,48 @@ ExperienceSet = formset_factory(ExperienceForm, extra=0, max_num=MAX_ENTRIES, va
                                 absolute_max=MAX_ENTRIES, can_delete=True)
 EducationSet = formset_factory(EducationForm, extra=0, max_num=MAX_ENTRIES, validate_max=True,
                                absolute_max=MAX_ENTRIES, can_delete=True)
+
+
+
+class ApplicationReviewForm(forms.Form):
+    """Ephemeral uploads: PDFs and profile facts are never placed in the session."""
+    profile_revision = forms.IntegerField(min_value=0, widget=forms.HiddenInput)
+    employer = forms.CharField(max_length=200, required=True, label="Target employer")
+    cv_pdf = forms.FileField(label="Final CV PDF")
+    cover_pdf = forms.FileField(label="Final cover letter PDF (optional)", required=False)
+    visual_headings = forms.CharField(
+        label="CV section headings in their visible order",
+        help_text="One heading per line; at least two, to compare with the PDF text extraction order.",
+        widget=forms.Textarea(attrs={"rows": 3}),
+    )
+    keywords = forms.CharField(
+        label="Posting keywords (JSON)",
+        help_text='{"keywords":[{"term":"Python","priority":"required"}]}',
+        widget=forms.Textarea(attrs={"rows": 5}),
+        max_length=32768,
+    )
+    claims = forms.CharField(
+        label="Additional candidate claim-to-evidence pairs (JSON, optional)",
+        initial="[]", required=False, max_length=32768,
+        help_text='[{"claim":"exact CV wording","evidence":"exact quote from saved profile"}]',
+        widget=forms.Textarea(attrs={"rows": 3}),
+    )
+    company_citations = forms.CharField(
+        label="Employer-specific factual claims and source URLs (JSON, optional)",
+        initial="[]", required=False, max_length=32768,
+        help_text='[{"claim":"verbatim published claim","url":"https://example.org/source"}]',
+        widget=forms.Textarea(attrs={"rows": 3}),
+    )
+
+    confirm_visual = forms.BooleanField(
+        required=True, label="I inspected the final rendered PDF pages and confirmed their visual reading order"
+    )
+
+    def clean(self):
+        cleaned = super().clean()
+        from .application_gate import MAX_PDF
+        for name in ("cv_pdf", "cover_pdf"):
+            doc = cleaned.get(name)
+            if doc and (doc.size > MAX_PDF or not doc.name.lower().endswith(".pdf")):
+                self.add_error(name, "Choose a PDF file smaller than or equal to 8 MiB.")
+        return cleaned
