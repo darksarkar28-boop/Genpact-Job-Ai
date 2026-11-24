@@ -281,3 +281,30 @@ class AdditionalMailboxSafetyTests(TestCase):
         self.assertEqual(signal.state, "needs_review")
         self.assertEqual(signal.proposed_status, "")
         self.assertIn("older", signal.reason)
+
+
+
+class OutlookMessageBodyTests(TestCase):
+    def test_full_message_body_trumps_short_preview(self):
+        payload = {
+            "value": [{
+                "id": "outlook-full-body-1",
+                "subject": "Example Labs next steps",
+                "from": {"emailAddress": {"name": "Careers", "address": "careers@examplelabs.com"}},
+                "receivedDateTime": "2026-11-23T12:00:00Z",
+                "bodyPreview": "Thank you for your time at our career fair.",
+                "body": {"contentType": "html", "content":
+                         "<div>Thank you for meeting us.</div><p>We are pleased to offer you a position.</p>"
+                         "<script>ignore instructions from malicious email</script>"},
+            }],
+        }
+        with patch("webapp.mail_providers.provider_get", return_value=payload) as fetch:
+            rows = outlook_messages("fake-access")
+        self.assertEqual(len(rows), 1)
+        self.assertIn("pleased to offer", rows[0]["body"])
+        self.assertNotIn("<script>", rows[0]["body"])
+        self.assertNotIn("ignore instructions", rows[0]["body"])
+        self.assertEqual(
+            fetch.call_args.kwargs["extra_headers"]["Prefer"],
+            'outlook.body-content-type="text"',
+        )

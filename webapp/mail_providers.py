@@ -1,5 +1,6 @@
 """Restricted read-only Gmail and Graph mailbox adapters. No binary attachments."""
 import base64
+from html.parser import HTMLParser
 from datetime import datetime, timezone as dt_timezone
 from email.utils import parsedate_to_datetime
 from urllib.parse import urlencode, urlsplit
@@ -69,17 +70,56 @@ def gmail_messages(token):
     return collected
 
 
+class _ReadableHTML(HTMLParser):
+    """Turn untrusted HTML email into text for classification; never render it."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts = []
+        self.skipped = 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("script", "style", "noscript"):
+            self.skipped += 1
+        elif tag in ("p", "br", "div", "li") and not self.skipped:
+            self.parts.append(" ")
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style", "noscript") and self.skipped:
+            self.skipped -= 1
+
+    def handle_data(self, data):
+        if not self.skipped:
+            self.parts.append(data)
+
+
+def _outlook_body(msg):
+    body = msg.get("body") or {}
+    if not isinstance(body, dict):
+        body = {}
+    content = body.get("content") or ""
+    if not isinstance(content, str):
+        content = ""
+    if str(body.get("contentType", "")).lower() == "html" and content:
+        parser = _ReadableHTML()
+        parser.feed(content[:16000])
+        content = " ".join(parser.parts)
+    return (content or msg.get("bodyPreview") or "")[:2500]
+
+
 def outlook_messages(token):
     root = "https://graph.microsoft.com/v1.0/me/messages"
     query = {
-        "$select": "id,subject,from,receivedDateTime,bodyPreview,webLink",
+        "$select": "id,subject,from,receivedDateTime,body,bodyPreview,webLink",
         "$top": "50", "$orderby": "receivedDateTime desc",
     }
     url = root + "?" + urlencode(query)
     result = []
     # Only follow provider-generated Microsoft Graph next links, never arbitrary redirects.
     for _ in range(2):
-        page = provider_get(url, token)
+        page = provider_get(url, token, extra_headers={
+            "Prefer": 'outlook.body-content-type="text"',
+        })
         for msg in page.get("value", []):
             msg_id = msg.get("id", "")
             if not msg_id or len(msg_id) > 512:
@@ -94,7 +134,7 @@ def outlook_messages(token):
             result.append({
                 "id": msg_id, "subject": (msg.get("subject") or "")[:300],
                 "sender": (sender.get("name", "") + " " + sender.get("address", ""))[:250],
-                "body": (msg.get("bodyPreview") or "")[:2500],
+                "body": _outlook_body(msg),
                 "received_at": _date(msg.get("receivedDateTime")),
                 "link": link,
             })

@@ -49,3 +49,9 @@ per click); it is not a mailbox subscription or historical backfill service.
 Additional pages and background scheduling are an operational follow-up,
 not something these fixture tests can prove is active. Unknown or conflicting
 messages are flagged for **manual review**, without guessing their application.
+
+
+Outlook synchronization requests message body text (using Microsoft's
+read-only Mail.Read permission and the Graph text-body preference) rather than
+relying only on the truncated bodyPreview. Bodies are inspected transiently for
+status phrases; they are never saved in the local database.

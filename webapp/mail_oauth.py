@@ -168,8 +168,11 @@ def access_token(connection, request):
     return data["access_token"]
 
 
-def provider_get(url, token):
-    req = Request(url, headers={"Authorization": "Bearer " + token, "Accept": "application/json"})
+def provider_get(url, token, *, extra_headers=None):
+    headers = {"Authorization": "Bearer " + token, "Accept": "application/json"}
+    if extra_headers:
+        headers.update(extra_headers)
+    req = Request(url, headers=headers)
     try:
         with urlopen(req, timeout=12) as response:
             return json.load(response)
