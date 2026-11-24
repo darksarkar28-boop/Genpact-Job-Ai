@@ -19,6 +19,14 @@ def _company_alias(company):
     return re.sub(r"(?: inc| ltd| llc| corp| corporation| limited| pvt| group)+$", "", name)
 
 
+def looks_job_related(msg):
+    opening = _normalized((msg.get("subject") or "") + " " + (msg.get("body") or "")[:450])
+    return bool(re.search(
+        r"\b(application|applicant|candidate|interview|assessment|recruiter|hiring|job offer|screening|position)\b",
+        opening,
+    ))
+
+
 def match_application(msg, applications):
     # Only subject, sender and the opening of the message count as employer evidence.
     source = _normalized(" ".join((msg["subject"], msg["sender"], msg["body"][:350])))
@@ -69,7 +77,11 @@ def import_signals(connection, messages):
             continue
         app, match_reason = match_application(msg, applications)
         stage, reason = proposed_stage(msg, app) if app else ("", match_reason)
-        state = "pending" if stage else ("needs_review" if app is None or "Conflicts" in reason or "conflicting" in reason else "ignored")
+        job_related = looks_job_related(msg)
+        state = "pending" if stage else (
+            "needs_review" if (app is None and job_related) or "Conflicts" in reason or "conflicting" in reason
+            else "ignored"
+        )
         if app and stage and msg.get("received_at"):
             previous = MailSignal.objects.filter(
                 application=app, state="approved", received_at__isnull=False,
@@ -84,9 +96,10 @@ def import_signals(connection, messages):
                 connection=connection, provider_message_id=msg_id,
                 defaults={
                     "application": app,
-                    "subject": msg.get("subject", "")[:300],
-                    "sender": msg.get("sender", "")[:250],
-                    "source_link": msg.get("link", ""),
+                    # No unnecessary mailbox metadata for unrelated messages.
+                    "subject": msg.get("subject", "")[:300] if state != "ignored" else "",
+                    "sender": msg.get("sender", "")[:250] if state != "ignored" else "",
+                    "source_link": msg.get("link", "") if state != "ignored" else "",
                     "received_at": msg.get("received_at"),
                     "proposed_status": stage,
                     "base_version": app.version if app else None,
