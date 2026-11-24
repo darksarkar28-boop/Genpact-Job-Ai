@@ -1,0 +1,31 @@
+{% extends "webapp/base.html" %}
+{% block content %}
+{% if profile.revision %}
+  <div class="page-head">
+    <div><p class="kicker">Master profile</p><h1>{{ profile.data.full_name }}</h1>
+      {% if profile.data.headline %}<p class="lead">{{ profile.data.headline }}</p>{% endif %}
+      <div class="meta">{% if profile.data.email %}<span>{{ profile.data.email }}</span>{% endif %}{% if profile.data.phone %}<span>{{ profile.data.phone }}</span>{% endif %}{% if profile.data.location %}<span>{{ profile.data.location }}</span>{% endif %}</div>
+    </div>
+    <a class="secondary" href="{% url 'edit' %}">Edit profile</a>
+  </div>
+  <div class="workspace-grid">
+    <div class="card stack">
+      {% if profile.data.summary %}<section><h2>Summary</h2><p class="preserve">{{ profile.data.summary }}</p></section>{% endif %}
+      {% if profile.data.skills %}<section><h2>Skills</h2><ul class="tags">{% for skill in profile.data.skills %}<li>{{ skill }}</li>{% endfor %}</ul></section>{% endif %}
+      <section><h2>Experience</h2>{% for row in profile.data.experience %}
+        <article><h3>{{ row.title }}{% if row.title and row.employer %} · {% endif %}{{ row.employer }}</h3>{% if row.dates %}<p class="hint">{{ row.dates }}</p>{% endif %}{% if row.details %}<p class="preserve">{{ row.details }}</p>{% endif %}</article>
+        {% empty %}<p class="hint">No experience added yet.</p>{% endfor %}</section>
+      <section><h2>Education</h2>{% for row in profile.data.education %}
+        <article><h3>{{ row.school }}{% if row.school and row.degree %} · {% endif %}{{ row.degree }}</h3>{% if row.dates %}<p class="hint">{{ row.dates }}</p>{% endif %}{% if row.details %}<p class="preserve">{{ row.details }}</p>{% endif %}</article>
+        {% empty %}<p class="hint">No education added yet.</p>{% endfor %}</section>
+    </div>
+    <aside class="card"><h2>Import another document</h2><p>Fill empty fields and add new entries to your saved profile. You can review every change.</p>{% include "webapp/import_form.html" %}</aside>
+  </div>
+{% else %}
+  <div class="page-head"><div><h1>Create your master profile</h1><p class="lead">Start with a document you already have. You can edit every detail before saving.</p></div></div>
+  <div class="workspace-grid">
+    <section class="card"><h2>Import your details</h2>{% include "webapp/import_form.html" %}</section>
+    <aside class="aside-note"><h2>Prefer to type it in?</h2><p>Add your contact details, work history, education and skills at your own pace.</p><a href="{% url 'edit' %}">Enter details manually</a></aside>
+  </div>
+{% endif %}
+{% endblock %}

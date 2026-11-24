@@ -1,0 +1,8 @@
+<fieldset class="record">
+  <legend>{{ label }}</legend>
+  {{ row.non_field_errors }}
+  <div class="fields">
+    {% for field in row.visible_fields %}{% if field.name != "DELETE" %}{% include "webapp/field.html" %}{% endif %}{% endfor %}
+  </div>
+  <label class="remove">{{ row.DELETE }} Remove this entry on save</label>
+</fieldset>

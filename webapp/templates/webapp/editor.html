@@ -1,0 +1,30 @@
+{% extends "webapp/base.html" %}
+{% block title %}Review your profile{% endblock %}
+{% block content %}
+  <div class="page-head"><div><a class="back" href="{% url 'workspace' %}">← Master profile</a><h1>Review your profile</h1>
+    <p class="lead">{% if imported %}Check the imported details and fill any gaps before saving.{% else %}Update the details you want to keep in your master profile.{% endif %}</p>
+  </div></div>
+  <form action="{% url 'edit' %}" method="post" class="edit-layout">{% csrf_token %}
+    <nav class="section-nav" aria-label="Profile sections"><a href="#contact">Contact</a><a href="#summary">Summary and skills</a><a href="#experience">Experience</a><a href="#education">Education</a></nav>
+    <div class="edit-body">
+      {{ form.revision }}{{ form.revision.errors }}
+      {{ form.non_field_errors }}
+      <section class="card editor-section" id="contact"><h2>Contact</h2>
+        <div class="fields">
+          {% include "webapp/field.html" with field=form.full_name %}
+          {% include "webapp/field.html" with field=form.headline %}
+          {% include "webapp/field.html" with field=form.email %}
+          {% include "webapp/field.html" with field=form.phone %}
+          {% include "webapp/field.html" with field=form.location %}
+        </div>
+      </section>
+      <section class="card editor-section" id="summary"><h2>Summary and skills</h2>
+        {% include "webapp/field.html" with field=form.summary %}
+        {% include "webapp/field.html" with field=form.skills %}
+      </section>
+      {% include "webapp/recordset.html" with group=experience section="Experience" label="Role" button="Add another role" %}
+      {% include "webapp/recordset.html" with group=education section="Education" label="Qualification" button="Add another qualification" %}
+      <div class="actions"><a href="{% url 'workspace' %}">Cancel</a><button class="primary" type="submit">Save profile</button></div>
+    </div>
+  </form>
+{% endblock %}
