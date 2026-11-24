@@ -12,6 +12,7 @@ urlpatterns = [
     path("profile/import/", views.import_profile, name="import"),
     path("profile/edit/", views.edit_profile, name="edit"),
     path("documents/", views.document_center, name="documents"),
+    path("documents/preview/", views.preview_document, name="document_preview"),
     path("documents/queue/", views.queue_document, name="document_queue"),
     path("documents/<int:job_id>/status/", views.document_status, name="document_status"),
     path("documents/<int:job_id>/retry/", views.retry_document, name="document_retry"),
