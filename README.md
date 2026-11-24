@@ -21,7 +21,9 @@
 </p>
 
 <p align="center">
-  <a href="#quick-start"><b>Quick start</b></a>
+  <a href="#web-profile-builder"><b>Web profile builder</b></a>
+  &nbsp;&nbsp;&nbsp;
+  <a href="#quick-start"><b>CLI quick start</b></a>
   &nbsp;&nbsp;&nbsp;
   <a href="#commands"><b>Commands</b></a>
   &nbsp;&nbsp;&nbsp;
@@ -71,6 +73,28 @@ A structured workflow that turns Claude Code into a full-stack job application a
 The core workflow (self-profiling, fit evaluation, and the drafter-reviewer application pipeline) is **language- and country-agnostic**. Job portal search skills live in [community-portals](https://github.com/ai-job-search-dev/community-portals), one folder per job board, owned by the people who use it: copy in the ones for your market, or build your own with `/add-portal`.
 
 The framework encodes career guidance best practices, including structured evaluation criteria, forward-looking cover letter framing, and optional salary benchmarking.
+
+## Web profile builder
+
+Open the web app, create an account, and choose a résumé PDF, DOCX, LinkedIn profile PDF, or LinkedIn data-export ZIP. Review the extracted details and select **Save profile**. Returning users can sign in, edit their saved profile, or import another file to fill gaps. The browser flow needs no CLI, LaTeX, API key or model subscription.
+
+The importer recognizes English résumé headings and English LinkedIn CSV headers. Export a text-based PDF or use DOCX for scanned documents. Check multi-column layouts and unusual headings in the review screen. Only confirmed fields are stored. Raw documents are discarded after parsing.
+
+### Start the web app
+
+From the repository root, in a Python 3.10+ virtual environment, run:
+
+```sh
+python -m pip install -r webapp/requirements.txt
+python manage.py migrate
+python manage.py runserver
+```
+
+Open <http://127.0.0.1:8000/>. The application stores accounts, sessions and profiles in SQLite under `~/.genpact-job-ai/`. Set `JOBWEB_DATA_DIR` before migration to use a different persistent directory. The CLI quick start below is independent.
+
+For a single-host production deployment, mount that directory on a persistent volume and set `JOBWEB_PRODUCTION=1`, `JOBWEB_ALLOWED_HOSTS` to your host name, and `JOBWEB_SECRET_KEY` to a persistent random secret. Terminate HTTPS at a trusted proxy that limits request bodies to 9 MiB and rate-limits account creation and login. If it strips incoming forwarded-protocol headers and supplies its own, set `JOBWEB_TRUST_PROXY_TLS=1`. After migration, run `python manage.py collectstatic --noinput` and serve `gunicorn webapp.wsgi:application` behind the proxy. Development uses a temporary signing key, so set a persistent key to keep sessions through restarts.
+
+Run the onboarding tests with `python manage.py test webapp`. To reproduce the timed desktop and mobile browser checks, install `playwright`, run `python -m playwright install chromium`, then run `python manage.py test webapp.browser_smoke`.
 
 ## Quick start
 
