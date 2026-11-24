@@ -26,7 +26,7 @@ NUMBER = re.compile(r"(?<!\w)(?:[$€£₹]\s*)?\d+(?:[.,]\d+)?\s*(?:%|percent|m
 YEAR = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
 DEGREE = re.compile(r"\b(?:B\.?\s?Sc|M\.?\s?Sc|B\.?\s?Tech|M\.?\s?Tech|MBA|Ph\.?\s?D|Bachelor(?:'s)?|Master(?:'s)?|Doctorate)\b", re.I)
 ROLE = re.compile(r"^\s*(?:job title|position|role)\s*:\s*(.+)$", re.I)
-EMPLOYER = re.compile(r"\b(?:worked|working|employed|engineer|analyst|manager|developer)\s+at\s+([A-Z][\w&.-]*(?:\s+[A-Z][\w&.-]*){0,4})")
+EMPLOYER = re.compile(r"\b(?i:(?:worked|working|employed|engineer|analyst|manager|developer)\s+at)\s+([A-Z][\w&.-]*(?:\s+[A-Z][\w&.-]*){0,4})")
 COMPANY_FACT = re.compile(r"\b(?:founded|launched|announced|raised|acquired|operates|headquartered|reported|increased|decreased|employs)\b", re.I)
 NAMED_COMPANY_FACT = re.compile(
     r"\b(?!We\b|Our\b|They\b|My\b)[A-Z][\w&.-]+(?:\s+[A-Z][\w&.-]+){0,4}\s+(?:has\s+)?"
