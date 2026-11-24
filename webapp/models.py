@@ -28,10 +28,20 @@ class Application(models.Model):
     company = models.CharField(max_length=250)
     role = models.CharField(max_length=250)
     source_url = models.URLField(max_length=2048, blank=True)
+    tracker_date = models.DateField(null=True, blank=True)
+    import_key = models.CharField(max_length=64, blank=True, default="")
     status = models.CharField(max_length=20, choices=ApplicationStatus.choices, default=ApplicationStatus.DRAFTED)
     version = models.PositiveIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user", "import_key"], condition=~models.Q(import_key=""),
+                name="application_import_per_user",
+            ),
+        ]
 
 
 class ApplicationStatusEvent(models.Model):

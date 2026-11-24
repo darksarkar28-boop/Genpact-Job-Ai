@@ -136,3 +136,9 @@ input[type=file]::file-selector-button { padding: .45rem .65rem; margin-right: .
 .mailbox-review > .hint { margin: .5rem 0 .8rem; }
 .mail-signal { padding: .9rem 0; border-top: 1px solid var(--line); display: grid; gap: .3rem; }
 .mail-decisions { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: .5rem; }
+
+.board-import { margin-bottom: 1.4rem; }
+.board-import-form { display: flex; gap: .8rem; align-items: center; flex-wrap: wrap; margin-top: .9rem; }
+.board-import-form label { font-weight: 600; }
+.board-confirm { display: flex; align-items: flex-start; gap: .4rem; font-size: .78rem; line-height: 1.3; font-weight: 400; color: var(--muted); }
+.board-confirm input { flex: 0 0 auto; margin-top: .2rem; }

@@ -99,3 +99,80 @@ class ApplicationBoardTests(TestCase):
         self.assertEqual(csrf_client.post(reverse("application_create"), {
             "company": "Example Labs", "role": "Engineer", "status": "drafted",
         }).status_code, 403)
+
+
+
+class LegacyTrackerImportTests(TestCase):
+    def setUp(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        self.upload_class = SimpleUploadedFile
+        self.user = get_user_model().objects.create_user("legacy_importer", password="legacy-test-2026")
+        self.client.force_login(self.user)
+        self.header = (
+            "date,company,sector,role,role_type,channel,status,contact_person,fit_rating,"
+            "notes,cv_file,cover_letter_file,source,deadline"
+        )
+        self.lines = [
+            "2026-10-01,Example Labs,tech,Data Engineer,full_time,portal,applied,,8,,cv/example.tex,,linkedin,",
+            "2026-10-05,Second Co,tech,Analyst,full_time,email,offer declined,,7,,,,naukri,",
+            "2026-10-06,Third Co,tech,Manager,full_time,email,no response,,7,,,,naukri,",
+        ]
+
+    def upload(self, lines=None, other=None):
+        payload = (self.header + "\n" + "\n".join(self.lines if lines is None else lines) + "\n").encode()
+        return (other or self.client).post(
+            reverse("application_import"),
+            {"tracker_csv": self.upload_class("job_search_tracker.csv", payload, content_type="text/csv")},
+        )
+
+    def test_import_normalizes_legacy_status_and_keeps_source_date(self):
+        self.assertRedirects(self.upload(), reverse("application_board"))
+        self.assertEqual(Application.objects.filter(user=self.user).count(), 3)
+        self.assertEqual(set(Application.objects.values_list("status", flat=True)),
+                         {"applied", "offer_declined", "no_response"})
+        self.assertEqual(Application.objects.get(company="Example Labs").tracker_date.isoformat(), "2026-10-01")
+        self.assertEqual(ApplicationStatusEvent.objects.filter(origin="tracker_import").count(), 3)
+
+    def test_repeated_import_never_overwrites_manual_stage(self):
+        self.upload()
+        app = Application.objects.get(company="Example Labs")
+        self.assertRedirects(
+            self.client.post(reverse("application_move", args=[app.pk]), {
+                "status": "interview", "version": 0,
+            }), reverse("application_board"))
+        self.assertRedirects(self.upload(), reverse("application_board"))
+        app.refresh_from_db()
+        self.assertEqual((app.status, app.version), ("interview", 1))
+        self.assertEqual(Application.objects.count(), 3)
+        self.assertEqual(app.events.count(), 2)
+
+    def test_reject_invalid_csv_atomically(self):
+        invalid = self.lines + ["2026-10-07,Bad Co,tech,Engineer,full_time,portal,fake,,8,,,,,",]
+        self.assertEqual(self.upload(invalid).status_code, 422)
+        self.assertEqual(Application.objects.count(), 0)
+        self.assertEqual(self.upload(["wrong,columns"]).status_code, 422)
+        self.assertEqual(Application.objects.count(), 0)
+        self.assertEqual(self.client.get(reverse("application_import")).status_code, 405)
+        self.assertEqual(Client().post(reverse("application_import"), {}).status_code, 302)
+
+    def test_import_isolated_from_other_users_and_updates_revision(self):
+        visitor = Client()
+        other = get_user_model().objects.create_user("legacy_other", password="legacy-other-2026")
+        visitor.force_login(other)
+        before = self.client.get(reverse("application_board_revision")).json()["revision"]
+        self.assertRedirects(self.upload(), reverse("application_board"))
+        after = self.client.get(reverse("application_board_revision")).json()["revision"]
+        self.assertNotEqual(before, after)
+        self.assertNotContains(visitor.get(reverse("application_board")), "Example Labs")
+        self.assertRedirects(self.upload(other=visitor), reverse("application_board"))
+        self.assertEqual(Application.objects.filter(user=other).count(), 3)
+
+    def test_explicit_offer_decision_is_required_and_audited(self):
+        self.upload()
+        app = Application.objects.get(company="Example Labs")
+        endpoint = reverse("application_move", args=[app.pk])
+        self.assertEqual(self.client.post(endpoint, {"status": "hired", "version": 0}).status_code, 422)
+        self.assertRedirects(
+            self.client.post(endpoint, {"status": "hired", "version": 0,
+                                       "confirm_offer_decision": "yes"}), reverse("application_board"))
+        self.assertEqual(app.events.order_by("-id").first().origin, "manual_offer_decision")

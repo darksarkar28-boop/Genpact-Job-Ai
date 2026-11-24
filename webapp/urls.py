@@ -18,6 +18,7 @@ urlpatterns = [
     path("applications/mail/signals/<int:signal_id>/decision/", mailbox.decide, name="mailbox_decide"),
     path("applications/revision/", board.application_board_revision, name="application_board_revision"),
     path("applications/new/", board.application_create, name="application_create"),
+    path("applications/import/", board.application_import, name="application_import"),
     path("applications/<int:application_id>/move/", board.application_move, name="application_move"),
     path("profile/import/", views.import_profile, name="import"),
     path("research/company/", views.company_research, name="company-research"),

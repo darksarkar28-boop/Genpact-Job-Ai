@@ -73,6 +73,16 @@
     <button type="submit" class="primary">Add to board</button>
   </form>
 </section>
+<section class="card board-import" aria-labelledby="board-import-title">
+  <h2 id="board-import-title">Already tracking applications in the CLI?</h2>
+  <p class="hint">Import your existing tracker CSV. Reimporting preserves edits and skips duplicate source rows.</p>
+  <form method="post" action="{% url 'application_import' %}" enctype="multipart/form-data" class="board-import-form">
+    {% csrf_token %}
+    {{ tracker_import_form.tracker_csv.label_tag }}
+    {{ tracker_import_form.tracker_csv }}
+    <button class="secondary" type="submit">Import tracker</button>
+  </form>
+</section>
 <div id="application-board" data-revision="{{ revision }}" data-revision-url="{% url 'application_board_revision' %}">
   <p class="hint board-live" role="status">Changes from your other sessions appear automatically while this page is idle.</p>
   <div class="board-columns" aria-label="Application status columns">
@@ -86,6 +96,7 @@
           <p class="board-company">{{ app.company }}</p>
           {% if app.source_url %}<a href="{{ app.source_url }}" target="_blank" rel="noopener noreferrer">Job posting</a>{% endif %}
           <p class="hint">Updated {{ app.updated_at|date:"M j, Y H:i" }} UTC</p>
+          {% if app.tracker_date %}<p class="hint">Tracker date {{ app.tracker_date|date:"M j, Y" }}</p>{% endif %}
           <form method="post" action="{% url 'application_move' app.pk %}" class="board-move-form">
             {% csrf_token %}
             <input type="hidden" name="version" value="{{ app.version }}">
@@ -95,6 +106,10 @@
                 <option value="{{ stage }}" {% if app.status == stage %}selected{% endif %}>{{ stage_label }}</option>
               {% endfor %}
             </select>
+            <label class="board-confirm">
+              <input type="checkbox" name="confirm_offer_decision" value="yes">
+              I confirm that I personally accepted or declined the offer if selecting Hired or Offer declined.
+            </label>
             <button type="submit" class="secondary">Save change</button>
           </form>
           <details class="board-history"><summary>History</summary>
