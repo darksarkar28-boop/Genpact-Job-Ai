@@ -61,6 +61,121 @@ jobs:
       - name: Compile and verify CVs and cover letters in PDF and DOCX
         run: python manage.py test webapp.document_worker_smoke
 
+
+  document-export-integration:
+    name: Real isolated PDF/DOCX exports
+    runs-on: ubuntu-latest
+    env:
+      JOBWEB_DATA_DIR: ${{ runner.temp }}/document-export-smoke
+      JOBWEB_DOCUMENT_WORKER_IMAGE: genpact-job-ai-document-worker:ci
+      JOBWEB_DOCUMENT_WORKER_TIMEOUT: "90"
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r webapp/requirements.txt
+      - name: Build isolated document worker
+        run: docker build -t "$JOBWEB_DOCUMENT_WORKER_IMAGE" webapp/document_worker
+      - name: Seed representative export jobs
+        run: |
+          python manage.py migrate
+          python - <<'PY'
+          import os
+          os.environ.setdefault("DJANGO_SETTINGS_MODULE", "webapp.settings")
+          import django
+          django.setup()
+          from django.contrib.auth import get_user_model
+          from webapp.documents import queue_document_job
+          from webapp.models import Profile
+
+          user = get_user_model().objects.create_user("document-smoke")
+          profile = Profile.objects.create(user=user, revision=1, data={
+              "full_name": "Mira Das",
+              "headline": "Software Engineer",
+              "email": "mira@example.test",
+              "phone": "+91 70000 00001",
+              "location": "Pune, India",
+              "summary": "Builds reliable reporting tools.",
+              "skills": ["Python", "SQL"],
+              "experience": [{
+                  "title": "Data Engineer",
+                  "employer": "Example Labs",
+                  "dates": "2021 - Present",
+                  "details": "Built internal pipelines.",
+              }],
+              "education": [{
+                  "school": "Example University",
+                  "degree": "BSc Computer Science",
+                  "dates": "2015 - 2019",
+                  "details": "Coursework in software systems.",
+              }],
+          })
+          requests = [
+              {"document_type": "cv", "output_format": "pdf", "template_key": "classic"},
+              {
+                  "document_type": "cover_letter",
+                  "output_format": "pdf",
+                  "template_key": "classic",
+                  "role": "Engineer",
+                  "company": "Example Co",
+                  "cover_letter_body": "Dear Hiring Team,\nI am applying because this role matches my confirmed experience.",
+              },
+              {"document_type": "cv", "output_format": "docx", "template_key": "modern"},
+              {"document_type": "cv", "output_format": "docx", "template_key": "compact"},
+          ]
+          for payload in requests:
+              job, created = queue_document_job(user, profile, payload)
+              assert created, job.pk
+          PY
+      - name: Process jobs through real Docker worker
+        run: |
+          for _ in 1 2 3 4; do
+            python manage.py run_document_worker --once
+          done
+      - name: Verify real artifacts, extraction, pagination and layout switching
+        run: |
+          python - <<'PY'
+          import os
+          import zipfile
+          os.environ.setdefault("DJANGO_SETTINGS_MODULE", "webapp.settings")
+          import django
+          django.setup()
+          from pathlib import Path
+          from webapp.documents import artifact_file
+          from webapp.models import DocumentJob
+
+          jobs = list(DocumentJob.objects.order_by("pk"))
+          assert len(jobs) == 4
+          for job in jobs:
+              assert job.status == "succeeded", (job.pk, job.error)
+              path = artifact_file(job)
+              assert path and path.stat().st_size > 0
+              assert job.verification["readable"] is True
+              assert job.verification["pages"] >= 1
+              assert job.verification["reading_order"].startswith("verified")
+              assert len(job.artifact_sha256) == 64
+
+          pdf_jobs = [job for job in jobs if job.output_format == "pdf"]
+          assert {job.document_type for job in pdf_jobs} == {"cv", "cover_letter"}
+
+          docx_jobs = [job for job in jobs if job.output_format == "docx"]
+          assert {job.template_key for job in docx_jobs} == {"modern", "compact"}
+          xml = {}
+          for job in docx_jobs:
+              with zipfile.ZipFile(artifact_file(job)) as doc:
+                  xml[job.template_key] = doc.read("word/document.xml")
+              assert job.verification["pagination_source"].startswith("headless LibreOffice")
+          assert xml["modern"] != xml["compact"]
+          assert b"Aptos" in xml["modern"]
+          assert b"Calibri" in xml["compact"]
+
+          staging = Path(os.environ["JOBWEB_DATA_DIR"]) / "exports" / ".staging"
+          assert not list(staging.iterdir())
+          PY
+
   lint:
     name: Lint skills, commands, settings
     runs-on: ubuntu-latest
