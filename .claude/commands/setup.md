@@ -69,6 +69,8 @@ Wait for the user's choice. If they pick A but the folder is still empty, tell t
 
 ## Path A: Documents Folder
 
+When model routing is configured and the user explicitly consents, use `python -m tools.routed_workflows extract --consent` with stdin JSON `text` for each selected résumé or profile text. Use only literal supported fields, compare with existing confirmed records and retain the cross-document review below. Other private material stays local unless specifically authorized. Do not send an entire documents directory or use a frontier model for extraction.
+
 Reads structured documents in `documents/`, cross-references them for consistency, and merges extracted data into the seven profile skill files. Read-before-write and idempotent: changes already present will not be proposed again.
 
 Follow these steps **exactly in order**.

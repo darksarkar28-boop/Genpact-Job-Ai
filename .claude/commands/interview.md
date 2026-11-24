@@ -39,7 +39,7 @@ v1 preps for a **specific application**. Generic no-target practice is out of sc
 
 ## Step 2: Research the Company (Interview-Focused)
 
-If the employer has a confirmed registry identity, first use `python -m tools.routed_workflows research` with JSON on stdin containing only `employer_id`. This reads the shared public cache using the operator's data directory; a hit is a research lead, not verification. Independently re-fetch relevant sources before quoting claims. Never send the candidate's profile, interview notes or application to this cache. On a miss continue with the local research process below.
+If the employer has a confirmed registry identity, first use `python -m tools.routed_workflows research` with JSON on stdin containing only `employer_id`. This reads the shared public cache using the operator's data directory; a hit is a research lead, not verification. Use `python -m tools.routed_workflows verify-research` with the same employer ID to recheck approved original sources; independently re-fetch relevant sources before quoting claims. Never send the candidate's profile, interview notes or application to this cache. On a miss continue with the local research process below.
 
 **First, check the cache**: read `company_research/<normalized-company-name>.json` per the Company Research Cache section in `04-job-evaluation.md` (normalize the company name the same way). If it exists and is within the documented TTL, start from it instead of researching from scratch — `/apply` may already have populated it for this same application. The verification rule below still applies regardless of source.
 

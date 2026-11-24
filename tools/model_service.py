@@ -79,9 +79,9 @@ def configured_router(config, environ=None, provider_factory=CompatibleProvider,
     if {(m.provider, m.name) for m in fast} & {(m.provider, m.name) for m in frontier}:
         raise ValueError("fast and frontier model lists must be distinct")
     budget = config["budgets_usd"]
-    if set(budget) != FAST | FRONTIER:
+    if set(budget) != FAST | FRONTIER or any(isinstance(v, bool) or not isinstance(v, (int, float)) for v in budget.values()):
         raise ValueError("configure a budget for each workload")
-    return Router(fast, frontier, adapters, budget, telemetry)
+    return Router(fast, frontier, adapters, budget, telemetry, timeouts=config.get("timeouts_seconds"))
 
 
 def route_text(workload, prompt, *, environ=None):

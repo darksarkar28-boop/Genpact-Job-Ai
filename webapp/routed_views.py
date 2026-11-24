@@ -17,7 +17,7 @@ from .models import Profile
 
 class WorkflowForm(forms.Form):
     action = forms.ChoiceField(choices=[("rank", "Rank postings"), ("deduplicate", "Find duplicate postings"),
-                                       ("apply", "Draft and review application"), ("research", "Company research leads")])
+                                       ("apply", "Draft and review application"), ("research", "Company research leads"), ("verify-research", "Recheck company research sources")])
     postings = forms.CharField(required=False, max_length=80000, widget=forms.Textarea(attrs={"rows": 10}),
                                help_text="Paste one posting per block, separated by a line containing ---.")
     employer_id = forms.CharField(required=False, max_length=169,
@@ -27,9 +27,9 @@ class WorkflowForm(forms.Form):
     def clean(self):
         data = super().clean()
         action = data.get("action")
-        if action != "research" and not data.get("consent"):
+        if action not in ("research", "verify-research") and not data.get("consent"):
             self.add_error("consent", "Explicit consent is required for AI requests.")
-        if action == "research" and not data.get("employer_id"):
+        if action in ("research", "verify-research") and not data.get("employer_id"):
             self.add_error("employer_id", "Provide a verified employer identifier.")
         blocks = [part.strip() for part in re.split(r"(?m)^---\s*$", data.get("postings", "")) if part.strip()]
         if action != "research" and not 1 <= len(blocks) <= 10:

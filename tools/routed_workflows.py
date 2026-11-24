@@ -15,6 +15,7 @@ from tools.posting_guard import guard, verdict
 from tools.rank_state import WEIGHTS, GATE_VERDICTS, overall_score, band
 from tools.shared_research_cache import ResearchCache
 from tools.public_research_provider import configured_feed, PublicFeedUnavailable
+from tools.research_verification import verify_sources
 
 MAX_INPUT = 100_000
 MAX_JOBS = 10
@@ -150,7 +151,8 @@ def application(profile, job, employer_id="", directory=None, route=route_text):
                  {**data, "draft": draft})
     if not isinstance(review, dict) or set(review) != {"cv", "cover_letter", "findings"} or not all(isinstance(review[k], str) and review[k].strip() for k in ("cv", "cover_letter")) or not isinstance(review["findings"], list) or not all(isinstance(v, str) for v in review["findings"]):
         raise RoutingError("invalid review")
-    return {"draft": review, "research_leads": leads, "guard": job["guard"],
+    return {"draft": review, "research_leads": leads,
+            "source_checks": verify_sources(employer_id, leads) if employer_id and leads else [], "guard": job["guard"],
             "requires_human_review": True, "requires_company_verification": True}
 
 
@@ -159,6 +161,10 @@ def run(action, data, directory=None, route=route_text):
         raise ValueError("JSON object required")
     if action == "research":
         return research(data.get("employer_id"), directory)
+    if action == "verify-research":
+        employer_id = data.get("employer_id")
+        ResearchCache.validate_key(employer_id)
+        return {"sources": verify_sources(employer_id, research(employer_id, directory)), "requires_human_review": True}
     if action == "deduplicate":
         return duplicates(data.get("jobs"), route)
     if action == "extract":
@@ -180,10 +186,10 @@ def run(action, data, directory=None, route=route_text):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("extract", "rank", "deduplicate", "apply", "research"))
+    parser.add_argument("action", choices=("extract", "rank", "deduplicate", "apply", "research", "verify-research"))
     parser.add_argument("--consent", action="store_true", help="confirm external model processing")
     args = parser.parse_args()
-    if args.action != "research" and not args.consent:
+    if args.action not in ("research", "verify-research") and not args.consent:
         parser.error("external processing requires --consent")
     import logging
     logging.basicConfig(level=logging.INFO)
