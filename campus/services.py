@@ -9,7 +9,7 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 
-from .models import AuditEvent, Cohort, Feedback, Invitation, Membership, Organization, ResumeReview, Revision, Role
+from .models import AuditEvent, Feedback, Invitation, Membership, Organization, ResumeReview, Revision, Role
 
 
 class CampusError(ValueError):

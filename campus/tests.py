@@ -182,6 +182,36 @@ class PortalTests(TestCase):
         self.client.post(self.url("manage_member", member.pk), {"action": "deactivate"})
         self.assertFalse(member.reviews.filter(withdrawn_at__isnull=True).exists())
 
+    def test_removing_a_mentor_assignment_revokes_all_existing_review_links(self):
+        own, member = self.candidate_client()
+        self.share(own)
+        review = member.reviews.get()
+        revision = review.revisions.get()
+        self.invite("mentor@example.test", Role.MENTOR)
+        coach = Client()
+        mentor = self.accept(coach, self.mentor, "mentor@example.test")
+        url = self.url("download", review.pk, revision.pk)
+        self.assertEqual(coach.get(url).status_code, 200)
+        self.client.post(self.url("manage_member", mentor.pk), {"action": "assign", "cohorts": [self.b.pk]})
+        self.assertEqual(coach.get(url).status_code, 404)
+        self.assertEqual(coach.post(self.url("comment", review.pk, revision.pk), {"comment": "stale tab"}).status_code, 404)
+        self.client.post(self.url("manage_member", mentor.pk), {"action": "assign", "cohorts": [self.a.pk]})
+        self.assertEqual(coach.get(url).status_code, 200)
+        self.client.post(self.url("manage_member", mentor.pk), {"action": "deactivate"})
+        self.assertEqual(coach.get(url).status_code, 404)
+        self.assertEqual(own.get(url).status_code, 200)
+
+    def test_admin_can_page_back_through_organization_access_history(self):
+        self.org.events.create(action="Oldest transfer", subject="student")
+        AuditEvent.objects.bulk_create([AuditEvent(organization=self.org, action="Assignment updated", subject=str(i))
+                                       for i in range(50)])
+        first = self.client.get(self.url("dashboard"))
+        self.assertContains(first, "Older events")
+        self.assertNotContains(first, "Oldest transfer")
+        second = self.client.get(self.url("dashboard"), {"history": 2, "cohort": self.a.pk})
+        self.assertContains(second, "Oldest transfer")
+        self.assertContains(second, "Newer events")
+
     @override_settings(CAMPUS_MAIL_ENABLED=True, EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
     def test_email_batch_and_fallback_on_mail_failure(self):
         self.invite("one@example.test,two@example.test", deliver="on")

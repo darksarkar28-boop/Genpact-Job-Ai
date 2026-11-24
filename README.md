@@ -98,7 +98,7 @@ Run the onboarding tests with `python manage.py test webapp`. To reproduce the t
 
 ### Campus and bootcamp portal
 
-After migration, provision a license for an existing account from the operator shell:
+An operator can provision a license for an existing account after migration.
 
 ```sh
 python manage.py provision_campus --slug placement --name "Placement Office" --seats 100 --admin placement_admin

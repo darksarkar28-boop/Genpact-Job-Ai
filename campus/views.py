@@ -5,6 +5,7 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.mail import send_mail
+from django.core.paginator import Paginator
 from django.db.models import Prefetch
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -111,7 +112,7 @@ def dashboard_data(request, org, member):
             roster = roster.filter(pk__in=candidates) | roster.filter(active=True, role=Role.MENTOR, mentor_cohorts=selected)
         data.update(roster=roster.distinct(), used=services.seats_used(org), invite_form=BulkInviteForm(org),
                     invitations=[(inv, invite_url(request, inv)) for inv in services.pending(org).select_related("cohort").order_by("email")],
-                    events=org.events.select_related("actor")[:50])
+                    events=Paginator(org.events.select_related("actor"), 50).get_page(request.GET.get("history")))
     return data
 
 

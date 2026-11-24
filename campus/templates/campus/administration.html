@@ -34,9 +34,14 @@
         </form></details>{% endif %}</li>
     {% empty %}<li>No members in this selection.</li>{% endfor %}</ul>
 </section>
-<section class="card campus-section"><h2>Access history</h2>
+<section id="access-history" class="card campus-section"><h2>Organization access history</h2>
   <ul class="campus-list">{% for event in events %}
     <li><div><strong>{{ event.action }}</strong> · {{ event.subject }}{% if event.detail %}<span>{{ event.detail }}</span>{% endif %}<span>{% if event.actor %}{{ event.actor.username }}{% else %}Operator{% endif %}</span></div>
       <time datetime="{{ event.created_at|date:'c' }}">{{ event.created_at|date:"M j, Y H:i T" }}</time></li>
     {% empty %}<li>No access changes recorded.</li>{% endfor %}</ul>
+  {% if events.has_other_pages %}<nav class="campus-controls" aria-label="Access history pages">
+    {% if events.has_previous %}<a href="?history={{ events.previous_page_number }}{% if selected %}&amp;cohort={{ selected.pk }}{% endif %}#access-history">Newer events</a>{% endif %}
+    <span>Page {{ events.number }} of {{ events.paginator.num_pages }}</span>
+    {% if events.has_next %}<a href="?history={{ events.next_page_number }}{% if selected %}&amp;cohort={{ selected.pk }}{% endif %}#access-history">Older events</a>{% endif %}
+  </nav>{% endif %}
 </section>
