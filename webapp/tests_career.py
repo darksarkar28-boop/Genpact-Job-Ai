@@ -40,6 +40,19 @@ class CareerEvidenceTests(SimpleTestCase):
         gaps, total = skill_gaps(postings + postings, ["python"])
         self.assertEqual((total, gaps[0]["skill"], gaps[0]["count"]), (2, "SQL", 2))
         self.assertEqual(skill_gaps(postings[:1], ["Python"])[0], [])
+        self.assertEqual((gaps[0]["baseline_match"], gaps[0]["estimated_match"], gaps[0]["match_gain"]), (50.0, 100.0, 50.0))
+
+    def test_gap_rank_uses_weighted_match_gain_and_repeated_evidence(self):
+        postings = [{"role": "Engineer", "source": f"https://example.com/{i}", "required_skills": skills}
+                    for i, skills in enumerate([["Python", "SQL"], ["Python", "SQL"],
+                       ["Python", "Docker", "A", "B", "C"], ["Python", "Docker", "D", "E", "F"],
+                       ["Python", "Docker", "G", "H", "I"], ["Rare"]])]
+        gaps, total = skill_gaps(postings, ["Python"])
+        self.assertEqual(total, 6)
+        self.assertEqual([g["skill"] for g in gaps], ["SQL", "Docker"])
+        self.assertEqual([g["match_gain"] for g in gaps], [16.7, 10.0])
+        self.assertEqual(gaps[0]["baseline_match"], 26.7)
+        self.assertEqual(gaps[0]["estimated_match"], 43.3)
 
     def test_negotiation_requires_actual_offer_and_target(self):
         with self.assertRaises(ValueError):
@@ -66,6 +79,7 @@ class CareerWebTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Insufficient evidence for a band")
         self.assertContains(response, "Python")
+        self.assertContains(response, "Estimated match gain")
         self.assertEqual(CareerContext.objects.get(user=user).data["role"], "Engineer")
         self.assertNotContains(response, "<h3>SQL</h3>")
         self.client.force_login(other)

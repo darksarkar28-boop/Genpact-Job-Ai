@@ -44,6 +44,7 @@ class BrowserCareer(StaticLiveServerTestCase):
                     page.locator(f"[name={field}]").fill(value)
                 page.get_by_role("button", name="Analyze evidence").click()
                 expect(page.get_by_text("Insufficient evidence for a band")).to_be_visible()
+                expect(page.get_by_text("Insufficient repeated evidence for a priority skill gap")).to_be_visible()
                 expect(page.locator("#counter-script")).to_have_value(re.compile("600,000.00"))
                 page.get_by_role("link", name="Open timed mock interviews").click()
                 expect(page.get_by_role("heading", name="Engineer at Acme")).to_be_visible()

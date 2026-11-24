@@ -16,7 +16,11 @@ The editable negotiation draft uses the actual offer and user-selected target.
 
 The skill planner accepts up to 100 postings with role, source and required_skills.
 It compares exact confirmed skills and counts distinct posting URLs; at least two
-postings must support a gap. Results are coverage estimates, not salary predictions.
+postings must support a gap. It ranks by the improvement in mean required-skill
+coverage if the candidate learns one skill, equally weighting each posting and
+its requirements. Each result shows baseline, estimated match, percentage-point
+improvement, and source postings. These are coverage estimates, not the AI rank
+score or predictions of salary or hiring outcomes.
 
 Timed interviews offer three company/role-specific questions with server-enforced
 two-minute deadlines. Text works without a microphone. Voice/video uses browser

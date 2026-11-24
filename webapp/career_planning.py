@@ -5,6 +5,7 @@ Salary observations are annual base pay, in the same explicit currency.
 """
 import datetime
 from decimal import Decimal, InvalidOperation
+from fractions import Fraction
 
 from django.core.exceptions import ValidationError
 from django.core.validators import URLValidator
@@ -90,9 +91,11 @@ def counter_offer(*, employer, role, currency, offer, target, band):
 
 
 def skill_gaps(rows, confirmed):
-    """Rank exact, candidate-entered required skills by distinct posting coverage.
+    """Rank missing skills by estimated mean required-skill match gain.
 
-    This measures possible coverage gain, not causal hiring or salary impact.
+    Each distinct posting is equally weighted; skills within a posting are
+    equally weighted. This is a coverage proxy, not the model rank score or
+    a causal prediction of hiring or salary.
     """
     known = {skill.strip().casefold() for skill in confirmed if isinstance(skill, str)}
     postings = {}
@@ -107,19 +110,29 @@ def skill_gaps(rows, confirmed):
             value = _text({"skill": skill}, "skill", 100)
             entry["skills"].setdefault(value.casefold(), value)
     missing = {}
+    baseline = Fraction(0)
     for source, entry in postings.items():
+        weight = Fraction(1, len(entry["skills"]))
+        baseline += len(known.intersection(entry["skills"])) * weight
         for key, label in entry["skills"].items():
             if key not in known:
-                item = missing.setdefault(key, {"skill": label, "postings": []})
+                item = missing.setdefault(key, {"skill": label, "postings": [], "gain": Fraction(0)})
+                item["gain"] += weight
                 item["postings"].append({"source": source, "role": entry["role"]})
     total = len(postings)
-    ordered = sorted(missing.values(), key=lambda row: (-len(row["postings"]), row["skill"].casefold()))
+    if not total:
+        return [], 0
+    baseline = 100 * baseline / total
+    eligible = [item for item in missing.values() if len(item["postings"]) >= 2]
+    ordered = sorted(eligible, key=lambda row: (-row["gain"], -len(row["postings"]), row["skill"].casefold()))
     result = []
     for item in ordered[:3]:
         count = len(item["postings"])
-        if count < 2:
-            continue
-        result.append({**item, "count": count, "total": total,
+        gain = 100 * item["gain"] / total
+        result.append({"skill": item["skill"], "postings": item["postings"], "count": count, "total": total,
+                       "baseline_match": round(float(baseline), 1),
+                       "estimated_match": round(float(baseline + gain), 1),
+                       "match_gain": round(float(gain), 1),
                        "action": f"Complete a practical exercise using {item['skill']}.",
                        "milestone": f"Publish one demonstrable {item['skill']} exercise with a passing test or review."})
     return result, total

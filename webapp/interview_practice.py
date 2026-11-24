@@ -16,7 +16,8 @@ def make_questions(context, profile):
     known = [s for s in profile.get("skills", []) if isinstance(s, str) and s.strip()]
     if not requirements:
         requirements = [s for s in known if _contains(context.get("posting_description", ""), s)][:6]
-    focus = ", ".join(requirements[:3]) or "a core responsibility in the supplied posting"
+    requirements = requirements[:3]
+    focus = ", ".join(requirements) or "a core responsibility in the supplied posting"
     return [
         {"text": f"Why are you interested in the {role} position at {employer}? Connect the posting to a confirmed example from your experience.",
          "points": ["because", "example", "result"], "type": "motivation"},
