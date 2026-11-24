@@ -205,6 +205,13 @@ class BackendReviewTests(TestCase):
                     self.assertContains(result, heading, status_code=422)
                     self.assertFalse(result.context["token"])
 
+    def test_supported_label_and_narrative_are_preserved(self):
+        lines = [*CV_LINES[:4], "I built reporting tools at Example Labs.", *CV_LINES[4:],
+                 "Position: data engineer at Example Labs"]
+        result = self.client.post(reverse("application_review"), self.post_data(lines=lines))
+        self.assertEqual(result.status_code, 200)
+        self.assertTrue(result.context["report"]["allowed"])
+
     def test_cv_headings_out_of_visual_order_block(self):
         lines = [line for line in CV_LINES if line not in ("Experience", "Education")]
         lines.insert(2, "Education")

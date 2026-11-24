@@ -27,6 +27,8 @@ YEAR = re.compile(r"(?<!\d)(?:19|20)\d{2}(?!\d)")
 DEGREE = re.compile(r"\b(?:B\.?\s?Sc|M\.?\s?Sc|B\.?\s?Tech|M\.?\s?Tech|MBA|Ph\.?\s?D|Bachelor(?:'s)?|Master(?:'s)?|Doctorate)\b", re.I)
 ROLE = re.compile(r"^\s*(?:job title|position|role)\s*:\s*(.+)$", re.I)
 EMPLOYER = re.compile(r"\b(?i:(?:worked|working|employed|engineer|analyst|manager|developer)\s+at)\s+([A-Z][\w&.-]*(?:\s+[A-Z][\w&.-]*){0,4})")
+EXPERIENCE_HEADINGS = {"experience", "work experience", "professional experience", "employment", "work history", "employment history"}
+OTHER_HEADINGS = {"summary", "profile", "education", "skills", "projects", "certifications", "awards", "languages", "publications"}
 COMPANY_FACT = re.compile(r"\b(?:founded|launched|announced|raised|acquired|operates|headquartered|reported|increased|decreased|employs)\b", re.I)
 NAMED_COMPANY_FACT = re.compile(
     r"\b(?!We\b|Our\b|They\b|My\b)[A-Z][\w&.-]+(?:\s+[A-Z][\w&.-]+){0,4}\s+(?:has\s+)?"
@@ -104,6 +106,32 @@ def _profile_fields(profile, key):
     return [str(row.get(key, "")).strip() for row in profile.get(section, []) if isinstance(row, dict) and row.get(key)]
 
 
+def _position_finding(line, in_experience, titles, positions):
+    label = ROLE.match(line)
+    if not label and not in_experience:
+        return None
+    claim = (label.group(1) if label else line).strip()
+    parts = re.split(r"\s+at\s+", claim, maxsplit=1, flags=re.I)
+    if len(parts) == 1:
+        if label and normalized(claim) not in titles:
+            return "Unsupported job title: " + claim[:100]
+        return None
+
+    title, employer = map(normalized, parts)
+    # Free prose can mention a workplace. Only a label, a known title, or a
+    # standalone role heading declares that the candidate held this position.
+    if not label and title not in titles:
+        words = parts[0].split()
+        if words[0].casefold() in {"i", "we", "my", "our"} or not all(
+            word[0].isupper() or word.casefold() in {"of", "and", "the", "for", "in", "&"}
+            for word in words
+        ):
+            return None
+    if (title, employer) not in positions:
+        return "Unsupported job title and employer: " + claim[:160]
+    return None
+
+
 def candidate_findings(document, profile, claim_list, externally_verified=""):
     """Require high-risk tokens and declared claims to be in confirmed profile evidence.
 
@@ -111,16 +139,28 @@ def candidate_findings(document, profile, claim_list, externally_verified=""):
     """
     evidence = normalized(profile_text(profile))
     external = normalized(externally_verified)
+    positions = {
+        (normalized(row["title"]), normalized(str(row.get("employer") or "")))
+        for row in profile.get("experience", [])
+        if isinstance(row, dict) and isinstance(row.get("title"), str) and row["title"].strip()
+    }
+    titles = {title for title, _ in positions}
     findings = []
     for token in sorted(set(m.group().strip() for m in [*YEAR.finditer(document), *NUMBER.finditer(document)])):
         if not has_term(evidence, token) and not has_term(external, token):
             findings.append(f"Unsupported metric or date: {token}")
+    in_experience = False
     for line in document.splitlines():
+        heading = normalized(line).rstrip(":")
+        if heading in EXPERIENCE_HEADINGS:
+            in_experience = True
+        elif heading in OTHER_HEADINGS:
+            in_experience = False
         if DEGREE.search(line) and not any(has_term(normalized(line), degree) for degree in _profile_fields(profile, "degree")):
             findings.append("Unsupported degree/course in: " + line[:100])
-        position = ROLE.match(line)
-        if position and not any(has_term(normalized(position.group(1)), role) for role in _profile_fields(profile, "title")):
-            findings.append("Unsupported job title: " + position.group(1)[:100])
+        position_error = _position_finding(line, in_experience, titles, positions)
+        if position_error:
+            findings.append(position_error)
         for match in EMPLOYER.finditer(line):
             if not any(has_term(normalized(match.group(1)), emp) for emp in _profile_fields(profile, "employer")):
                 findings.append("Unsupported employer: " + match.group(1)[:100])

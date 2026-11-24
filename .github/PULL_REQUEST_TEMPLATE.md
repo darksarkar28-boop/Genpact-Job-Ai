@@ -14,6 +14,10 @@
 ## Failing case / reproduction (for fixes)
 
 ## Verification
-<!-- What you ran, per CONTRIBUTING: python3 tools/lint_skills.py,
-     python3 tools/check_framework_version.py, bun test / bun run typecheck
-     in touched CLIs, python3 -m unittest discover -s tests -->
+<!-- Link the issue and map each acceptance criterion to a test case and its
+     GitHub Actions job on the submitted revision. Identify any missing or
+     skipped scenarios and which external services used fixtures. -->
+
+| Linked issue and acceptance criterion | Test case | GitHub Actions job and result |
+| --- | --- | --- |
+| | | |
