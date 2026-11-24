@@ -123,10 +123,12 @@ def edit_profile(request):
 @never_cache
 @require_GET
 def company_research(request):
-    from tools.shared_research_cache import ResearchCache
+    from tools.routed_workflows import research
     try:
-        cache = ResearchCache(settings.DATA_DIR / "public_research.sqlite3")
-        result = cache.lookup(request.GET.get("employer_id"))
+        employer_id = request.GET.get("employer_id")
+        if not employer_id:
+            raise ValueError("missing employer identifier")
+        result = research(employer_id, settings.DATA_DIR)
     except ValueError:
         return JsonResponse({"error": "Use a verified registry namespace and employer identifier."}, status=400)
     if result is None:

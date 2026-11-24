@@ -1,5 +1,6 @@
 """Account-scoped workbench for explicitly authorized model operations."""
 import json
+import re
 
 from django import forms
 from django.conf import settings
@@ -30,7 +31,7 @@ class WorkflowForm(forms.Form):
             self.add_error("consent", "Explicit consent is required for AI requests.")
         if action == "research" and not data.get("employer_id"):
             self.add_error("employer_id", "Provide a verified employer identifier.")
-        blocks = [part.strip() for part in __import__("re").split(r"(?m)^---\s*$", data.get("postings", "")) if part.strip()]
+        blocks = [part.strip() for part in re.split(r"(?m)^---\s*$", data.get("postings", "")) if part.strip()]
         if action != "research" and not 1 <= len(blocks) <= 10:
             self.add_error("postings", "Provide one to ten postings.")
         if action == "apply" and len(blocks) != 1:
@@ -53,7 +54,7 @@ def workbench(request):
             data = form.cleaned_data
             profile = Profile.objects.filter(user=request.user).first()
             action = data["action"]
-            payload = {"profile": profile.data if profile else {}, "jobs": data["jobs"],
+            payload = {"profile": profile.data if profile and profile.revision else {}, "jobs": data["jobs"],
                        "employer_id": data["employer_id"]}
             if data["jobs"]:
                 payload["job"] = data["jobs"][0]

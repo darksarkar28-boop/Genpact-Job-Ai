@@ -14,6 +14,7 @@ from tools.model_service import route_text
 from tools.posting_guard import guard, verdict
 from tools.rank_state import WEIGHTS, GATE_VERDICTS, overall_score, band
 from tools.shared_research_cache import ResearchCache
+from tools.public_research_provider import configured_feed, PublicFeedUnavailable
 
 MAX_INPUT = 100_000
 MAX_JOBS = 10
@@ -116,7 +117,18 @@ def research(employer_id, directory=None):
         return None
     directory = Path(directory or os.environ.get("JOBWEB_DATA_DIR", Path.home() / ".genpact-job-ai"))
     directory.mkdir(mode=0o700, parents=True, exist_ok=True)
-    return ResearchCache(directory / "public_research.sqlite3").lookup(employer_id)
+    cache = ResearchCache(directory / "public_research.sqlite3")
+    hit = cache.lookup(employer_id)
+    if hit is not None:
+        return hit
+    try:
+        fetch = configured_feed()
+        if fetch is not None:
+            return cache.get_or_refresh(employer_id, fetch)
+    except PublicFeedUnavailable:
+        # A failed refresh must not serve stale facts as fresh.
+        return None
+    return None
 
 
 def application(profile, job, employer_id="", directory=None, route=route_text):
@@ -149,6 +161,13 @@ def run(action, data, directory=None, route=route_text):
         return research(data.get("employer_id"), directory)
     if action == "deduplicate":
         return duplicates(data.get("jobs"), route)
+    if action == "extract":
+        text = data.get("text")
+        if not isinstance(text, str) or not text.strip() or len(text) > 60000:
+            raise ValueError("document text required")
+        from webapp.resume_text import parse_resume
+        from webapp.ai_extract import extract_draft
+        return extract_draft(text, parse_resume(text), route)
     profile = data.get("profile")
     if not isinstance(profile, (dict, str)) or not profile:
         raise ValueError("confirmed profile required")
@@ -161,8 +180,11 @@ def run(action, data, directory=None, route=route_text):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("rank", "deduplicate", "apply", "research"))
+    parser.add_argument("action", choices=("extract", "rank", "deduplicate", "apply", "research"))
+    parser.add_argument("--consent", action="store_true", help="confirm external model processing")
     args = parser.parse_args()
+    if args.action != "research" and not args.consent:
+        parser.error("external processing requires --consent")
     import logging
     logging.basicConfig(level=logging.INFO)
     try:

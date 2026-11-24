@@ -40,7 +40,11 @@ Run under the web service account and the same JOBWEB_DATA_DIR. The cache is in 
 
 ## Routed CLI input
 
-Run python -m tools.routed_workflows ACTION with JSON on stdin. Actions: rank (profile and jobs), deduplicate (jobs), apply (profile, job, optional employer_id), research (employer_id only). Each job contains key and text, not a URL. Use a confirmed candidate profile, and obtain permission before external processing. Results are drafts and suggestions, never automatic submissions. The rank result uses the existing weighted scoring and gate contract. Only operator-approved public ingestion writes the shared cache.
+Run python -m tools.routed_workflows ACTION with JSON on stdin. Actions: extract (text), rank (profile and jobs), deduplicate (jobs), apply (profile, job, optional employer_id), research (employer_id only). All model actions require the explicit --consent flag. Each job contains key and text, not a URL. Use a confirmed candidate profile, and obtain permission before external processing. Results are drafts and suggestions, never automatic submissions. The rank result uses the existing weighted scoring and gate contract. Only operator-approved public ingestion writes the shared cache.
+
+## Automatic public research refresh
+
+Optionally set JOB_AI_PUBLIC_RESEARCH_FEEDS to a JSON map from verified registry identifiers to operator-approved HTTPS JSON feed endpoints. Each endpoint must return an object with employer_id (matching the exact key) and sources (array of public URL/summary objects). Only configured endpoints may be called, redirects are refused, responses are bounded, and no candidate data is transmitted. A fresh cache hit makes no feed call. A miss or expired row refreshes under the cache transaction; failed refresh returns no fresh research rather than stale information. Operators must ensure the feed is authorized and public-only. The manual ingestion command remains available. Cached leads are not final evidence.
 
 ## Tests
 

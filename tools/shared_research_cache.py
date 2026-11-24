@@ -5,6 +5,8 @@ Only public research ingestion code may populate this cache, never candidate dat
 SQLite serializes refreshes across processes sharing the same database.
 """
 import json
+from contextlib import closing
+from math import isfinite
 import re
 import sqlite3
 import time
@@ -13,23 +15,23 @@ from urllib.parse import urlsplit
 
 class ResearchCache:
     def __init__(self, path, ttl=30 * 86400, clock=time.time):
-        if ttl <= 0:
+        if not isfinite(ttl) or ttl <= 0:
             raise ValueError("positive TTL required")
         self.path, self.ttl, self.clock = path, ttl, clock
-        with sqlite3.connect(path) as db:
+        with closing(sqlite3.connect(path)) as db, db:
             db.execute("""CREATE TABLE IF NOT EXISTS public_research
                        (employer TEXT PRIMARY KEY, fetched REAL NOT NULL, sources TEXT NOT NULL)""")
 
     @staticmethod
     def _validate(sources):
-        if not isinstance(sources, list) or not sources:
+        if not isinstance(sources, list) or not 1 <= len(sources) <= 30:
             raise ValueError("public sources required")
         clean = []
         for source in sources:
             if not isinstance(source, dict) or set(source) != {"url", "summary"}:
                 raise ValueError("only public URL and summary fields allowed")
             url, summary = source["url"], source["summary"]
-            if not isinstance(url, str) or not isinstance(summary, str) or not summary.strip():
+            if not isinstance(url, str) or not isinstance(summary, str) or not summary.strip() or len(summary) > 12000 or len(url) > 2048:
                 raise ValueError("invalid source")
             parsed = urlsplit(url)
             if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
