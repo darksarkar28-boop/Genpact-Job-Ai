@@ -1,5 +1,6 @@
 """Conservative employer matching and status proposals, never instructions from mail."""
 import re
+from urllib.parse import urlsplit
 
 from django.db import transaction
 from django.utils import timezone
@@ -66,6 +67,21 @@ def proposed_stage(msg, app):
     return target, description
 
 
+def _safe_source_link(provider, value):
+    """Allow trusted provider origins only, never user-supplied javascript: links."""
+    if not isinstance(value, str) or len(value) > 2048 or not value.startswith("https://"):
+        return ""
+    try:
+        host = urlsplit(value).hostname
+    except ValueError:
+        return ""
+    allowed = (
+        {"mail.google.com"} if provider == "google" else
+        {"outlook.office.com", "outlook.office365.com", "outlook.live.com"}
+    )
+    return value if host in allowed else ""
+
+
 def import_signals(connection, messages):
     applications = list(Application.objects.filter(user=connection.user))
     new = 0
@@ -82,6 +98,11 @@ def import_signals(connection, messages):
             "needs_review" if (app is None and job_related) or "Conflicts" in reason or "conflicting" in reason
             else "ignored"
         )
+        if app and stage and msg.get("received_at") and app.version > 0:
+            if msg["received_at"] < app.updated_at:
+                stage = ""
+                state = "needs_review"
+                reason = "Email is older than the last saved stage change; review manually."
         if app and stage and msg.get("received_at"):
             previous = MailSignal.objects.filter(
                 application=app, state="approved", received_at__isnull=False,
@@ -99,7 +120,7 @@ def import_signals(connection, messages):
                     # No unnecessary mailbox metadata for unrelated messages.
                     "subject": msg.get("subject", "")[:300] if state != "ignored" else "",
                     "sender": msg.get("sender", "")[:250] if state != "ignored" else "",
-                    "source_link": msg.get("link", "") if state != "ignored" else "",
+                    "source_link": _safe_source_link(connection.provider, msg.get("link", "")) if state != "ignored" else "",
                     "received_at": msg.get("received_at"),
                     "proposed_status": stage,
                     "base_version": app.version if app else None,

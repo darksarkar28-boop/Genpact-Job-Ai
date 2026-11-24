@@ -231,3 +231,51 @@ class NoneRequest:
 
     def get_host(self):
         return "testserver"
+
+
+
+class AdditionalMailboxSafetyTests(TestCase):
+    def setUp(self):
+        from .mail_oauth import encrypt
+        self.user = get_user_model().objects.create_user("safe-mail-user", password="safe-mail-test-2026")
+        self.env = patch.dict(os.environ, {"JOBWEB_MAIL_TOKEN_KEY": Fernet.generate_key().decode()})
+        self.env.start()
+        self.addCleanup(self.env.stop)
+        self.application = Application.objects.create(
+            user=self.user, company="Example Labs", role="Data Engineer", status="applied",
+        )
+        self.connection = MailConnection.objects.create(
+            user=self.user, provider="google", access_token_ciphertext=encrypt("fake-access"),
+        )
+
+    def message(self, mid="m1", link="https://mail.google.com/mail/u/0/#all/123"):
+        return {"id": mid, "subject": "Example Labs technical interview invitation",
+                "sender": "jobs@examplelabs.com", "body": "Please schedule a technical interview.",
+                "received_at": timezone.now(), "link": link}
+
+    def test_source_url_restricted_to_provider_and_job_metadata_only(self):
+        from .mail_classifier import import_signals
+        import_signals(self.connection, [self.message(link="javascript:alert(1)")])
+        signal = MailSignal.objects.get()
+        self.assertEqual(signal.state, "pending")
+        self.assertEqual(signal.source_link, "")
+        self.assertFalse(hasattr(signal, "body"))
+        self.assertEqual(signal.subject, "Example Labs technical interview invitation")
+
+    def test_delayed_message_after_manual_stage_is_not_auto_proposed(self):
+        from .mail_classifier import import_signals
+        from django.db.models import F
+        from datetime import timedelta
+        past = timezone.now() - timedelta(days=4)
+        Application.objects.filter(pk=self.application.pk).update(
+            status="interview", version=F("version") + 1, updated_at=timezone.now(),
+        )
+        delayed = self.message(mid="delayed")
+        delayed["received_at"] = past
+        delayed["subject"] = "Example Labs formal offer letter"
+        delayed["body"] = "We are pleased to offer you a position."
+        import_signals(self.connection, [delayed])
+        signal = MailSignal.objects.get()
+        self.assertEqual(signal.state, "needs_review")
+        self.assertEqual(signal.proposed_status, "")
+        self.assertIn("older", signal.reason)

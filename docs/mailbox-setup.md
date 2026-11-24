@@ -31,3 +31,21 @@ subscription. Reconnect if refresh access expires or is revoked. Provider
 credentials are required for production integration tests; GitHub browser
 acceptance only uses fake client IDs and intercepts the consent navigation,
 never accessing a real mailbox.
+
+
+## Production acceptance and limitations
+
+The GitHub Actions tests exercise consent URL generation, PKCE/state validation,
+token encryption/refresh via provider doubles, a real Django/browser session,
+and application-stage approval. A real Google/Microsoft OAuth handshake **cannot**
+be established with dummy client IDs. Before a production launch, register OAuth
+apps (including Google's required review where applicable) and use test Gmail and
+Microsoft accounts to verify consent, token expiry/revocation, full message
+pagination and account disconnection. Do not put test account refresh tokens in
+GitHub Actions artifacts or commit them to the repository.
+
+The manual sync reads recent mailbox messages only (up to 100 per provider
+per click); it is not a mailbox subscription or historical backfill service.
+Additional pages and background scheduling are an operational follow-up,
+not something these fixture tests can prove is active. Unknown or conflicting
+messages are flagged for **manual review**, without guessing their application.
