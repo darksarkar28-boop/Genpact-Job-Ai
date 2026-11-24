@@ -5,6 +5,7 @@ Only public research ingestion code may populate this cache, never candidate dat
 SQLite serializes refreshes across processes sharing the same database.
 """
 import json
+import re
 import sqlite3
 import time
 from urllib.parse import urlsplit
@@ -36,6 +37,26 @@ class ResearchCache:
             clean.append({"url": url, "summary": summary})
         return clean
 
+    @staticmethod
+    def validate_key(employer_id):
+        # A registry namespace and identifier, never a display name.
+        if not isinstance(employer_id, str) or not re.fullmatch(r"[A-Z][A-Z0-9_-]{1,39}:[A-Z0-9][A-Z0-9._-]{0,127}", employer_id):
+            raise ValueError("canonical employer ID required")
+
+    def lookup(self, employer_id):
+        """Read fresh public research without allowing candidate-supplied writes."""
+        self.validate_key(employer_id)
+        db = sqlite3.connect(self.path)
+        try:
+            row = db.execute("SELECT fetched, sources FROM public_research WHERE employer = ?",
+                             (employer_id,)).fetchone()
+        finally:
+            db.close()
+        if not row or not 0 <= self.clock() - row[0] < self.ttl:
+            return None
+        return {"fetched_at": row[0], "sources": json.loads(row[1]), "cache_hit": True,
+                "requires_verification": True}
+
     def get_or_refresh(self, employer_id, fetch_public):
         """Return sources and timestamp. Caller must independently verify final claims.
 
@@ -43,8 +64,7 @@ class ResearchCache:
         No account identity or candidate context belongs in its arguments or result.
         A failed refresh rolls back and does not mark stale data fresh.
         """
-        if not isinstance(employer_id, str) or not employer_id.strip() or employer_id != employer_id.strip():
-            raise ValueError("canonical employer ID required")
+        self.validate_key(employer_id)
         db = sqlite3.connect(self.path, timeout=30)
         try:
             db.execute("BEGIN IMMEDIATE")
