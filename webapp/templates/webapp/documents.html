@@ -1,0 +1,112 @@
+{% extends "webapp/base.html" %}
+{% block title %}Document exports{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="kicker">Cloud exports</p>
+    <h1>PDF & DOCX studio</h1>
+    <p class="lead">Create ATS-safe files from the profile you already confirmed. Compilation runs outside the web request in an isolated worker.</p>
+  </div>
+  <a class="secondary" href="{% url 'workspace' %}">Back to profile</a>
+</div>
+
+{% if not profile.revision %}
+  <section class="card">
+    <h2>Save a profile first</h2>
+    <p class="lead">Document exports are tied to a confirmed profile revision so a later edit cannot silently change an existing file.</p>
+    <p><a class="primary" href="{% url 'edit' %}">Create profile</a></p>
+  </section>
+{% else %}
+  <div class="document-layout">
+    <section class="card">
+      <h2>Create an export</h2>
+      <p class="hint">Profile revision {{ profile.revision }} · {{ profile.data.full_name }}</p>
+      {% if export_error %}<p class="notice error" role="alert">{{ export_error }}</p>{% endif %}
+      <form class="export-form" action="{% url 'document_queue' %}" method="post">
+        {% csrf_token %}
+        <div class="fields">
+          <div class="field">
+            <label for="document_type">Document</label>
+            <select id="document_type" name="document_type">
+              <option value="cv" {% if form_data.document_type != "cover_letter" %}selected{% endif %}>CV</option>
+              <option value="cover_letter" {% if form_data.document_type == "cover_letter" %}selected{% endif %}>Cover letter</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="output_format">Format</label>
+            <select id="output_format" name="output_format">
+              <option value="pdf" {% if form_data.output_format != "docx" %}selected{% endif %}>PDF</option>
+              <option value="docx" {% if form_data.output_format == "docx" %}selected{% endif %}>Editable DOCX</option>
+            </select>
+          </div>
+        </div>
+
+        <fieldset class="template-picker">
+          <legend>ATS template</legend>
+          <div class="template-grid">
+            {% for item in templates %}
+              <label class="template-card">
+                <input type="radio" name="template_key" value="{{ item.key }}"
+                  {% if form_data.template_key == item.key or not form_data.template_key and item.key == "classic" %}checked{% endif %}>
+                <span><strong>{{ item.label }}</strong><small>{{ item.description }}</small></span>
+              </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+
+        <details class="cover-fields" {% if form_data.document_type == "cover_letter" %}open{% endif %}>
+          <summary>Cover-letter content</summary>
+          <p class="hint">Required only when exporting a cover letter. Switching template or format does not change this text.</p>
+          <div class="fields">
+            <div class="field"><label for="role">Role</label><input id="role" name="role" maxlength="200" value="{{ form_data.role|default:'' }}"></div>
+            <div class="field"><label for="company">Company</label><input id="company" name="company" maxlength="200" value="{{ form_data.company|default:'' }}"></div>
+          </div>
+          <div class="field"><label for="cover_letter_body">Letter text</label><textarea id="cover_letter_body" name="cover_letter_body" rows="10" maxlength="20000">{{ form_data.cover_letter_body|default:'' }}</textarea></div>
+        </details>
+        <button class="primary" type="submit">Queue export</button>
+      </form>
+    </section>
+
+    <aside class="card">
+      <h2>Export checks</h2>
+      <p>The worker reads the finished file back before release. It blocks empty text layers, missing confirmed contact details, and unexpected reading order.</p>
+      <ul class="check-list">
+        <li>Single-column source order</li>
+        <li>PDF text extraction and page count</li>
+        <li>DOCX text extraction</li>
+        <li>Email and phone preservation</li>
+        <li>Artifact SHA-256 recorded</li>
+      </ul>
+    </aside>
+  </div>
+
+  <section class="jobs-section">
+    <div class="section-heading"><h2>Recent exports</h2><span class="hint">Newest first</span></div>
+    {% for job in jobs %}
+      <article class="card job-row">
+        <div>
+          <p class="kicker">#{{ job.pk }} · {{ job.get_document_type_display }} · {{ job.output_format|upper }}</p>
+          <h3>{{ job.template_key|title }} template</h3>
+          <p class="hint">Profile revision {{ job.profile_revision }} · attempt {{ job.attempt }}</p>
+          {% if job.error %}<p class="job-error">{{ job.error }}</p>{% endif %}
+          {% if job.verification.warnings %}
+            {% for warning in job.verification.warnings %}<p class="hint">{{ warning }}</p>{% endfor %}
+          {% endif %}
+        </div>
+        <div class="job-actions">
+          <span class="status status-{{ job.status }}">{{ job.get_status_display }}</span>
+          {% if job.status == "succeeded" %}
+            {% if job.output_format == "pdf" %}<a class="secondary" href="{% url 'document_download' job.pk %}?preview=1" target="_blank" rel="noopener">Preview</a>{% endif %}
+            <a class="primary" href="{% url 'document_download' job.pk %}">Download</a>
+          {% elif job.status == "failed" %}
+            <form action="{% url 'document_retry' job.pk %}" method="post">{% csrf_token %}<button class="secondary" type="submit">Retry</button></form>
+          {% endif %}
+        </div>
+      </article>
+    {% empty %}
+      <div class="card"><p class="hint">No exports yet.</p></div>
+    {% endfor %}
+  </section>
+  {% if has_active_jobs %}<script>window.setTimeout(function () { window.location.reload(); }, 4000);</script>{% endif %}
+{% endif %}
+{% endblock %}
