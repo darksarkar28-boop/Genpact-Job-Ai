@@ -8,7 +8,7 @@ validate claims, or enforce authorization for exporting documents.
 1. Extract the final CV text with `tools/verify_pdf.py --dump-text`, retaining
    `--ascii-dates`. Use the same text-layer output that an ATS actually reads.
 2. Save the exact terms from the posting to a **temporary** JSON file:
-   
+
    ```json
    {
      "keywords": [
@@ -35,8 +35,8 @@ ATS hit), `missing (have it)` (a term appears in provided profile text but
 not in the CV), or `missing (unverified)` (not seen in either).
 
 Literal coverage = **exact matched terms / total terms**, separately for
-required and preferred terms. A zero denominator is reported as `null`,
-not 100%. Aliases do not count as exact hits. Punctuation and typographic
+required and preferred terms. A zero denominator appears as `null` in JSON
+and `N/A` in the text report. Aliases do not count as exact hits. Punctuation and typographic
 characters are folded using the existing PDF-verifier comparison function.
 
 **Important:** A profile-text hit is only a lead; a reviewer must verify the

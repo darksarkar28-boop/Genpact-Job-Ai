@@ -32,7 +32,8 @@ def has_term(text: str, term: str) -> bool:
     needle = normalized(term)
     if not needle:
         return False
-    return re.search(r"(?<!\w)" + re.escape(needle) + r"(?!\w)", text) is not None
+    # A language suffix is part of its name: C, C++ and C# are distinct terms.
+    return re.search(r"(?<!\w)" + re.escape(needle) + r"(?!\w|\+\+|#)", text) is not None
 
 
 def load_keywords(path: Path) -> list[dict]:
@@ -141,9 +142,11 @@ def main(argv=None) -> int:
                 return str(value or "-").replace("|", "\\|").replace("\r", " ")
             print(" | ".join(cell(record[name]) for name in ("term", "priority", "status", "matched_term")))
         for priority, values in report["summary"].items():
+            percent = values["coverage_percent"]
+            coverage = f"{percent}%" if percent is not None else "N/A"
             print(f"{priority}: exact {values['covered']}/{values['total']}, "
                   f"synonym-only {values['synonym_only']}, missing {values['missing']}, "
-                  f"literal coverage {values['coverage_percent']}%")
+                  f"literal coverage {coverage}")
         print(report["note"])
     return 0
 

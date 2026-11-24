@@ -22,6 +22,13 @@ class MatchTests(unittest.TestCase):
         self.assertTrue(has_term(normalized("C++ and C#"), "C++"))
         self.assertFalse(has_term(normalized("C followed by Java"), "C++"))
 
+    def test_language_suffixes_stay_with_their_term(self):
+        text = normalized("C++ and C# developer using Python+SQL")
+        self.assertFalse(has_term(text, "C"))
+        self.assertTrue(has_term(text, "C#"))
+        self.assertTrue(has_term(text, "Python"))
+        self.assertTrue(has_term(normalized("C/C++ developer"), "C"))
+
 
 class CoverageTests(unittest.TestCase):
     def setUp(self):
@@ -77,6 +84,14 @@ class CLITests(unittest.TestCase):
             code = main(["--cv-text", str(self.cv), "--terms", str(self.terms)])
         self.assertEqual(code, 1)
         self.assertIn("priority", stderr.getvalue())
+
+    def test_text_report_for_empty_priority_group(self):
+        self.terms.write_text(json.dumps({"keywords": [{"term": "Python", "priority": "required"}]}))
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            code = main(["--cv-text", str(self.cv), "--terms", str(self.terms)])
+        self.assertEqual(code, 0)
+        self.assertIn("preferred: exact 0/0, synonym-only 0, missing 0, literal coverage N/A", stdout.getvalue())
 
     def test_empty_cv_fails_closed(self):
         self.cv.write_text("  \n")
