@@ -102,6 +102,24 @@ class DocumentExportTests(TestCase):
         job.refresh_from_db()
         return job
 
+    def approve(self, cv_job, cover_job=None):
+        payload = {
+            "cv_job_id": cv_job.pk,
+            "cover_job_id": cover_job.pk if cover_job else "",
+            "employer": "Example Labs",
+            "visual_headings": "Summary\nSkills\nExperience\nEducation",
+            "keywords": '{"keywords":[{"term":"Python","priority":"required"}]}',
+            "claims": "[]",
+            "company_citations": "[]",
+            "confirm_visual": "on",
+        }
+        response = self.client.post(reverse("document_release_review"), payload)
+        self.assertRedirects(response, reverse("documents"))
+        cv_job.refresh_from_db()
+        if cover_job:
+            cover_job.refresh_from_db()
+        return response
+
     def test_source_preview_preserves_content_and_recruiter_badge_requires_evidence(self):
         letter = "Dear Hiring Team,\nThis is the exact content I want to keep."
         preview = self.client.post(reverse("document_preview"), {
@@ -148,6 +166,8 @@ class DocumentExportTests(TestCase):
         status = self.client.get(reverse("document_status", args=[job.pk]))
         self.assertEqual(status.json()["status"], "succeeded")
         self.assertIn("preview_url", status.json())
+        self.assertNotIn("download_url", status.json())
+        self.assertTrue(status.json()["review_required"])
         preview = self.client.get(reverse("document_download", args=[job.pk]) + "?preview=1")
         self.assertEqual(preview.status_code, 200)
         self.assertEqual(preview["Content-Type"], "application/pdf")
@@ -167,6 +187,15 @@ class DocumentExportTests(TestCase):
         other = Client()
         other.force_login(get_user_model().objects.create_user("different_owner"))
         self.assertEqual(other.get(reverse("document_download", args=[job.pk])).status_code, 404)
+
+        locked = self.client.get(reverse("document_download", args=[job.pk]))
+        self.assertEqual(locked.status_code, 403)
+        self.assertContains(locked, "Final download is locked", status_code=403)
+
+        self.approve(job)
+        status = self.client.get(reverse("document_status", args=[job.pk])).json()
+        self.assertTrue(status["release_approved"])
+        self.assertIn("download_url", status)
 
         download = self.client.get(reverse("document_download", args=[job.pk]))
         self.assertEqual(download.status_code, 200)
@@ -245,6 +274,18 @@ class DocumentExportTests(TestCase):
             retry_document_job(second_request)
         active.refresh_from_db()
         self.assertEqual((active.status, active.attempt), (DocumentJob.Status.FAILED, 2))
+
+    def test_profile_revision_invalidates_generated_release_approval(self):
+        self.queue()
+        job = self.finish_next()
+        self.approve(job)
+        self.assertEqual(self.client.get(reverse("document_download", args=[job.pk])).status_code, 200)
+
+        Profile.objects.filter(pk=self.profile.pk).update(revision=self.profile.revision + 1)
+        self.profile.refresh_from_db()
+        blocked = self.client.get(reverse("document_download", args=[job.pk]))
+        self.assertEqual(blocked.status_code, 403)
+        self.assertContains(blocked, "Final download is locked", status_code=403)
 
     def test_cover_letter_requires_text_and_template_switch_preserves_content(self):
         invalid = self.queue(document_type="cover_letter")
