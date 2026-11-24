@@ -28,6 +28,11 @@ DEGREE = re.compile(r"\b(?:B\.?\s?Sc|M\.?\s?Sc|B\.?\s?Tech|M\.?\s?Tech|MBA|Ph\.?
 ROLE = re.compile(r"^\s*(?:job title|position|role)\s*:\s*(.+)$", re.I)
 EMPLOYER = re.compile(r"\b(?:worked|working|employed|engineer|analyst|manager|developer)\s+at\s+([A-Z][\w&.-]*(?:\s+[A-Z][\w&.-]*){0,4})")
 COMPANY_FACT = re.compile(r"\b(?:founded|launched|announced|raised|acquired|operates|headquartered|reported|increased|decreased|employs)\b", re.I)
+NAMED_COMPANY_FACT = re.compile(
+    r"\b[A-Z][\w&.-]+(?:\s+[A-Z][\w&.-]+){0,4}\s+(?:has\s+)?"
+    r"(?:founded|launched|announced|raised|acquired|operates|reported|increased|decreased|employs)\b",
+    re.I if False else 0,
+)
 
 
 class GateError(ValueError):
@@ -201,7 +206,10 @@ def fetch_public_source(url):
 def company_findings(document, employer, citations, *, source_fetcher=fetch_public_source):
     findings, verified = [], []
     facts = [line.strip() for line in document.splitlines()
-             if employer and has_term(normalized(line), employer) and COMPANY_FACT.search(line)]
+             if COMPANY_FACT.search(line) and (
+                 (employer and has_term(normalized(line), employer))
+                 or NAMED_COMPANY_FACT.search(line)
+             )]
     for i, source in enumerate(citations):
         if not isinstance(source, dict) or not all(isinstance(source.get(k), str) and source[k].strip() for k in ("claim", "url")):
             findings.append(f"Company citation #{i + 1} needs a claim and HTTPS URL")
