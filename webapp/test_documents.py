@@ -1,10 +1,13 @@
 import tempfile
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from .documents import (
     DocumentProblem,
@@ -171,6 +174,23 @@ class DocumentExportTests(TestCase):
         )
         payload = b"".join(download.streaming_content)
         self.assertTrue(payload.startswith(b"PK"))
+
+    def test_retention_cleanup_removes_artifact_but_keeps_audit_record(self):
+        self.queue()
+        job = self.finish_next()
+        path = Path(self.temp.name) / job.artifact_name
+        self.assertTrue(path.is_file())
+        old = timezone.now() - timedelta(days=45)
+        DocumentJob.objects.filter(pk=job.pk).update(finished_at=old)
+
+        call_command("cleanup_document_exports", older_than_days=30)
+        job.refresh_from_db()
+        self.assertFalse(path.exists())
+        self.assertEqual(job.artifact_name, "")
+        self.assertEqual(job.artifact_sha256, "")
+        self.assertIn("artifact_cleaned_at", job.verification)
+        self.assertEqual(DocumentJob.objects.filter(pk=job.pk).count(), 1)
+        self.assertEqual(self.client.get(reverse("document_download", args=[job.pk])).status_code, 404)
 
     def test_failed_compile_is_cleaned_and_can_be_retried(self):
         self.queue()
