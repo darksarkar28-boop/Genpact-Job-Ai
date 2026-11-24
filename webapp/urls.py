@@ -13,4 +13,5 @@ urlpatterns = [
     path("profile/import/", views.import_profile, name="import"),
     path("research/company/", views.company_research, name="company-research"),
     path("profile/edit/", views.edit_profile, name="edit"),
+    path("applications/review/", views.application_review, name="application_review"),
 ]

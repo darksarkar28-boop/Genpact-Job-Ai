@@ -119,6 +119,110 @@ def edit_profile(request):
     return _editor(request, profile, profile.data, submitted=request.POST if request.method == "POST" else None)
 
 
+
+@login_required
+@sensitive_post_parameters("claims", "company_citations", "token")
+@never_cache
+@require_http_methods(["GET", "POST"])
+def application_review(request):
+    """Review then export the actual uploaded PDF bytes; never trust a prior report."""
+    import hashlib
+    import io
+    import json
+    import zipfile
+    from django.core import signing
+    from django.http import HttpResponse
+    from .application_gate import GateError, audit, parse_json_list
+    from .forms import ApplicationReviewForm
+
+    profile = _owned_profile(request)
+    if request.method == "GET":
+        return render(request, "webapp/application_review.html", {
+            "form": ApplicationReviewForm(initial={
+                "profile_revision": profile.revision,
+                "visual_headings": "Experience\nEducation",
+                "keywords": '{"keywords":[{"term":"Python","priority":"required"}]}',
+                "claims": "[]", "company_citations": "[]",
+            }),
+        })
+
+    if request.POST.get("action") not in ("review", "export"):
+        return HttpResponse("Unknown review operation", status=400)
+    form = ApplicationReviewForm(request.POST, request.FILES)
+    if not form.is_valid():
+        return render(request, "webapp/application_review.html", {"form": form}, status=422)
+    values = form.cleaned_data
+    if values["profile_revision"] != profile.revision or not profile.revision:
+        form.add_error(None, "Your master profile has changed or has not been saved. Reload and review again.")
+        return render(request, "webapp/application_review.html", {"form": form}, status=409)
+    try:
+        terms_obj = json.loads(values["keywords"])
+        if not isinstance(terms_obj, dict):
+            raise GateError("Posting keywords must be a JSON object")
+        keywords = terms_obj.get("keywords")
+        claims = parse_json_list(values["claims"], "Candidate claims", maximum=60)
+        company_citations = parse_json_list(values["company_citations"], "Company citations", maximum=8)
+        cv_data = values["cv_pdf"].read()
+        cover_data = values["cover_pdf"].read() if values.get("cover_pdf") else b""
+        headings = [line.strip() for line in values["visual_headings"].splitlines() if line.strip()]
+    except (ValueError, TypeError) as exc:
+        form.add_error(None, f"Cannot check the submission: {exc}")
+        return render(request, "webapp/application_review.html", {"form": form}, status=422)
+
+    report = audit(
+        profile.data, cv_data, cover_pdf=cover_data, keywords=keywords, claims=claims,
+        company_citations=company_citations, employer=values["employer"],
+        visual_headings=headings,
+    )
+    # Bind approval to the owner, profile version, actual PDF bytes, and every
+    # input governing the audit. The signed approval cannot be replayed for edits.
+    specification = {
+        "keywords": keywords, "claims": claims, "citations": company_citations,
+        "employer": values["employer"], "headings": headings,
+    }
+    spec_hash = hashlib.sha256(json.dumps(specification, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+    approved = {"user": request.user.pk, "revision": profile.revision,
+                "pdf": report.get("pdf_sha256"), "spec": spec_hash}
+    token = signing.dumps(approved, salt="job-ai-application-release-v1") if report["allowed"] else None
+
+    # Another tab may have changed the profile while PDFs and citations were checked.
+    profile.refresh_from_db()
+    if values["profile_revision"] != profile.revision:
+        report["allowed"] = False
+        report["errors"].append("Profile updated during review; upload and review again.")
+        token = None
+
+    if request.POST["action"] == "export":
+        try:
+            previous = signing.loads(request.POST.get("token", ""), salt="job-ai-application-release-v1", max_age=900)
+        except signing.BadSignature:
+            previous = None
+        if previous != approved or not report["allowed"] or values["profile_revision"] != profile.revision:
+            report["allowed"] = False
+            report["errors"].append("Export denied: a current approved review of these exact files and inputs is required.")
+        else:
+            out = io.BytesIO()
+            with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr("validated_cv.pdf", cv_data)
+                if cover_data:
+                    archive.writestr("validated_cover_letter.pdf", cover_data)
+                public_report = {"allowed": True, "profile_revision": profile.revision,
+                                 "checked_at": timezone.now().isoformat(),
+                                 "coverage": report.get("coverage"),
+                                 "verified_sources": report.get("verified_sources", []),
+                                 "pdf_sha256": report.get("pdf_sha256"),
+                                 "note": report.get("note")}
+                archive.writestr("verification_report.json", json.dumps(public_report, ensure_ascii=False, indent=2))
+            response = HttpResponse(out.getvalue(), content_type="application/zip")
+            response["Content-Disposition"] = 'attachment; filename="verified_application.zip"'
+            response["Cache-Control"] = "no-store"
+            return response
+    return render(request, "webapp/application_review.html", {
+        "form": form, "report": report, "token": token if request.POST["action"] == "review" else None,
+        "requires_reupload": True,
+    }, status=200 if report["allowed"] else 422)
+
+
 @login_required
 @never_cache
 @require_GET
