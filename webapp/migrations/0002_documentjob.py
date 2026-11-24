@@ -37,6 +37,7 @@ class Migration(migrations.Migration):
             ],
             options={
                 "indexes": [models.Index(fields=["user", "status", "-created_at"], name="docjob_user_status_idx")],
+                "constraints": [models.UniqueConstraint(fields=("user", "fingerprint"), name="docjob_user_fingerprint_uniq")],
             },
         ),
     ]
