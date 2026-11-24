@@ -26,3 +26,26 @@ Useful environment variables:
 - `JOBWEB_DOCUMENT_WORKER_CPUS` — CPU bound, default `1.0`.
 
 Artifacts are written below `JOBWEB_DATA_DIR/exports`, not the Git checkout. Build directories live below a private staging directory and are deleted after every attempt. The web download endpoint always filters by the signed-in owner.
+
+
+## Retention and recruiter-review evidence
+
+Generated files are private candidate artifacts and should not be retained forever. The job row is kept for audit, while the file itself can be removed after a retention window:
+
+```bash
+python manage.py cleanup_document_exports --older-than-days 30
+```
+
+Use `--dry-run` first when changing retention policy.
+
+The gallery never labels a layout as **Recruiter-tested** merely because it exists. An operator must first record non-empty reviewer feedback and explicitly approve it:
+
+```bash
+python manage.py record_template_review \
+  --template classic \
+  --reviewer "Recruiter review panel" \
+  --feedback "Single-column layout scanned cleanly; contact details and section order were easy to find." \
+  --approved
+```
+
+Without an approved feedback record, the browser shows **Recruiter review pending**. This prevents unverified marketing claims about a layout.
