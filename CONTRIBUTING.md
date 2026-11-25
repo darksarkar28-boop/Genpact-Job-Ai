@@ -37,7 +37,7 @@ Reviews here are empirical. Bug reports are reproduced on master before the fix 
 - GitHub Actions runs the test suites for every pull request. Open **Checks → CI gate** to see the result and the job that needs attention. New commits cancel superseded PR runs. The merge queue and pushes to `master` also run CI.
 - In the Actions run, open the issue-numbered jobs to see the selected test cases and their outcomes. The final gate lists the PR commit and the tested revision. A missing or skipped acceptance suite fails CI.
 - Dependency review audits the resolved Python web requirements on each run. On pull requests it also compares GitHub's dependency graph when the repository makes it available.
-- Python tool tests use `python -m unittest discover -s tests -t .`. Web tests use `python manage.py test webapp`. CI also exercises signup, import, save and returning sign-in in Chromium at desktop and mobile widths. Add new CI jobs to the dependency chain of `ci-result` so they appear in the merge check.
+- Python tool tests use `python -m unittest discover -s tests -t .`. Web tests use `python manage.py test webapp`. CI also exercises signup, import, save and returning sign-in in Chromium at desktop and mobile widths. The document worker job compiles real PDFs and DOCX files in Docker and submits the generated CV and cover letter through final review and ZIP release. Add new CI jobs to the dependency chain of `ci-result` so they appear in the merge check.
 
 **Credit norm:** a change that incorporates your actual code gets a `Co-authored-by` trailer; a change written independently from your observation or report gets a named mention in the commit message and PR. Both happen unprompted.
 

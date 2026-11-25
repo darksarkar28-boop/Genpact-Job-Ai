@@ -205,6 +205,27 @@ class BackendReviewTests(TestCase):
                     self.assertContains(result, heading, status_code=422)
                     self.assertFalse(result.context["token"])
 
+    def test_stock_employer_heading_requires_its_own_title_and_dates(self):
+        saved = Profile.objects.get(user=self.user)
+        saved.data["experience"].append({
+            "title": "Lead Analyst", "employer": "Second Labs", "dates": "2021 - Present",
+        })
+        saved.save(update_fields=["data"])
+        for employer, role_line, allowed in (
+            ("Example Labs", "Data Engineer 2019 - 2024", True),
+            ("Second Labs", "Lead Analyst", True),
+            ("Example Labs", "Lead Analyst 2021 - Present", False),
+            ("Example Labs", "Data Engineer 2021 - Present", False),
+            ("Second Labs", "Director 2021 - Present", False),
+        ):
+            with self.subTest(employer=employer, role_line=role_line):
+                lines = [*CV_LINES[:3], employer, role_line, *CV_LINES[5:]]
+                response = self.client.post(reverse("application_review"), self.post_data(lines=lines))
+                self.assertEqual(response.status_code, 200 if allowed else 422)
+                if not allowed:
+                    self.assertContains(response, role_line + " at " + employer, status_code=422)
+                    self.assertFalse(response.context["token"])
+
     def test_standalone_title_headings_do_not_allow_unconfirmed_promotions(self):
         for title, permitted in [
             ("Data Engineer", True),
@@ -220,6 +241,21 @@ class BackendReviewTests(TestCase):
                     self.assertContains(result, "Unsupported job title: " + title, status_code=422)
                     self.assertFalse(result.context["token"])
 
+    def test_inline_template_heading_checks_employer_title_and_dates_together(self):
+        for separator in (" · ", " - "):
+            for title, workplace, dates, allowed in (
+                ("Data Engineer", "Example Labs", "2019 - 2024", True),
+                ("Principal Engineer", "Example Labs", "2019 - 2024", False),
+                ("Data Engineer", "Other Labs", "2019 - 2024", False),
+                ("Data Engineer", "Example Labs", "2015 - 2019", False),
+            ):
+                heading = f"{title}{separator}{workplace} {dates}"
+                with self.subTest(heading=heading):
+                    findings = candidate_findings("Experience\n" + heading, PROFILE, [])
+                    self.assertEqual(not findings, allowed, findings)
+                    if not allowed:
+                        self.assertIn("Unsupported job title and employer: " + heading, findings)
+
     def test_extra_unconfirmed_degree_on_same_line_is_blocked(self):
         lines = [line.replace("BSc Computer Science", "BSc Computer Science, PhD Physics")
                  for line in CV_LINES]
@@ -227,6 +263,32 @@ class BackendReviewTests(TestCase):
         self.assertEqual(result.status_code, 422)
         self.assertContains(result, "Unsupported degree credential: PhD", status_code=422)
         self.assertFalse(result.context["token"])
+
+    def test_displayed_qualification_dates_belong_to_the_same_degree(self):
+        saved = Profile.objects.get(user=self.user)
+        saved.data["education"].append({
+            "degree": "MSc Statistics", "school": "Second University", "dates": "Sep 2024 - Present",
+        })
+        saved.save(update_fields=["data"])
+        for qualification, allowed in (
+            ("MSc Statistics Sep 2024 - Present", True),
+            ("MSc Statistics (Sep 2024 - Present)", True),
+            ("BSc Computer Science 2015 - 2019", True),
+            ("MSc Statistics, Sep 2024 - Present", True),
+            ("MSc Statistics from Second University, Sep 2024 - Present", True),
+            ("MSc Statistics, 2015 - 2019", False),
+            ("MSc Statistics from Second University, 2015 - 2019", False),
+            ("MSc Statistics, Oct 2024 - Present", False),
+            ("MSc Statistics 2015 - 2019", False),
+            ("MSc Economics Sep 2024 - Present", False),
+        ):
+            with self.subTest(qualification=qualification):
+                lines = [qualification if line == "BSc Computer Science" else line for line in CV_LINES]
+                response = self.client.post(reverse("application_review"), self.post_data(lines=lines))
+                self.assertEqual(response.status_code, 200 if allowed else 422)
+                if not allowed:
+                    self.assertContains(response, qualification, status_code=422)
+                    self.assertFalse(response.context["token"])
 
     def test_unconfirmed_second_bsc_blocks_review_and_release(self):
         # Regression from the hosted failure on febefe2: the degree prefix
@@ -285,6 +347,17 @@ class BackendReviewTests(TestCase):
         response = self.client.post(reverse("application_review"), self.post_data(lines=lines))
         self.assertEqual(response.status_code, 422)
         self.assertContains(response, "heading order", status_code=422)
+
+    def test_cover_mailing_date_is_distinct_from_candidate_work_history(self):
+        for body, expected in [("I build reporting tools.", 200), ("I started building tools in 2031.", 422)]:
+            with self.subTest(body=body):
+                cover = pdf(["Mira Das", "November 24, 2031", "Dear Hiring Team,", body])
+                response = self.client.post(reverse("application_review"), self.post_data(extra={
+                    "cover_pdf": SimpleUploadedFile("cover.pdf", cover, content_type="application/pdf"),
+                }))
+                self.assertEqual(response.status_code, expected, response.context["report"])
+                if expected == 422:
+                    self.assertIn("Unsupported metric or date: 2031", response.context["report"]["errors"])
 
     def test_unsourced_target_company_news_blocks_cover_letter(self):
         cover = pdf(["Dear Hiring Manager", "Example Labs launched a satellite platform in 2024.",
@@ -356,6 +429,22 @@ class PureAuditTests(TestCase):
     def test_fabricated_role_and_claim_are_rejected(self):
         findings = candidate_findings("Position: Lead Astronaut\nSkills Python", PROFILE, [])
         self.assertTrue(any("Unsupported job title" in item for item in findings))
+
+    def test_public_employer_metric_does_not_verify_a_separate_candidate_claim(self):
+        fact = "Example Labs launched 99 projects."
+        url = "https://news.example.test/launch"
+        options = dict(keywords=TERMS["keywords"], visual_headings=["Experience", "Education"],
+                       employer="Example Labs", company_citations=[{"url": url, "claim": fact}],
+                       source_fetcher=lambda _: fact)
+        greeting = "Dear Hiring Team, I am interested in this opportunity."
+        supported = audit(PROFILE, pdf(CV_LINES), cover_pdf=pdf([greeting, fact]), **options)
+        self.assertTrue(supported["allowed"], supported["errors"])
+        rejected = audit(PROFILE, pdf(CV_LINES), cover_pdf=pdf([greeting, fact, "I completed 99 projects."]), **options)
+        self.assertFalse(rejected["allowed"])
+        self.assertIn("Unsupported metric or date: 99 projects", rejected["errors"])
+        partial, _ = company_findings(fact, "Example Labs", [{"url": url, "claim": "Example Labs"}],
+                                      source_fetcher=lambda _: "Example Labs")
+        self.assertTrue(any(fact in finding for finding in partial))
 
     def test_reordered_headings_detected(self):
         self.assertIsNotNone(section_order("Education\nExperience", ["Experience", "Education"]))

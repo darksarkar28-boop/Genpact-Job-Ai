@@ -1,0 +1,235 @@
+{% extends "webapp/base.html" %}
+{% block title %}Document exports{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="kicker">Cloud exports</p>
+    <h1>PDF & DOCX studio</h1>
+    <p class="lead">Create ATS-safe files from the profile you already confirmed. Compilation runs outside the web request in an isolated worker.</p>
+  </div>
+  <a class="secondary" href="{% url 'workspace' %}">Back to profile</a>
+</div>
+
+{% if not profile.revision %}
+  <section class="card">
+    <h2>Save a profile first</h2>
+    <p class="lead">Document exports are tied to a confirmed profile revision so a later edit cannot silently change an existing file.</p>
+    <p><a class="primary" href="{% url 'edit' %}">Create profile</a></p>
+  </section>
+{% else %}
+  <div class="document-layout">
+    <section class="card">
+      <h2>Create an export</h2>
+      <p class="hint">Profile revision {{ profile.revision }} · {{ profile.data.full_name }}</p>
+      {% if export_error %}<p class="notice error" role="alert">{{ export_error }}</p>{% endif %}
+      <form class="export-form" action="{% url 'document_queue' %}" method="post">
+        {% csrf_token %}
+        <div class="fields">
+          <div class="field">
+            <label for="document_type">Document</label>
+            <select id="document_type" name="document_type">
+              <option value="cv" {% if form_data.document_type != "cover_letter" %}selected{% endif %}>CV</option>
+              <option value="cover_letter" {% if form_data.document_type == "cover_letter" %}selected{% endif %}>Cover letter</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="output_format">Format</label>
+            <select id="output_format" name="output_format">
+              <option value="pdf" {% if form_data.output_format != "docx" %}selected{% endif %}>PDF</option>
+              <option value="docx" {% if form_data.output_format == "docx" %}selected{% endif %}>Editable DOCX</option>
+            </select>
+          </div>
+        </div>
+
+        <fieldset class="template-picker">
+          <legend>ATS template</legend>
+          <div class="template-grid">
+            {% for item in templates %}
+              <label class="template-card">
+                <input type="radio" name="template_key" value="{{ item.key }}"
+                  {% if form_data.template_key == item.key or not form_data.template_key and item.key == "classic" %}checked{% endif %}>
+                <span>
+                  <strong>{{ item.label }}</strong>
+                  <small>{{ item.description }}</small>
+                  {% if item.review %}
+                    <small class="reviewed">Recruiter-tested · {{ item.review.reviewer_label }}</small>
+                  {% else %}
+                    <small class="pending-review">Recruiter review pending</small>
+                  {% endif %}
+                </span>
+              </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+
+        <details class="cover-fields" {% if form_data.document_type == "cover_letter" %}open{% endif %}>
+          <summary>Cover-letter content</summary>
+          <p class="hint">Required only when exporting a cover letter. Switching template or format does not change this text.</p>
+          <div class="fields">
+            <div class="field"><label for="role">Role</label><input id="role" name="role" maxlength="200" value="{{ form_data.role|default:'' }}"></div>
+            <div class="field"><label for="company">Company</label><input id="company" name="company" maxlength="200" value="{{ form_data.company|default:'' }}"></div>
+          </div>
+          <div class="field"><label for="cover_letter_body">Letter text</label><textarea id="cover_letter_body" name="cover_letter_body" rows="10" maxlength="20000">{{ form_data.cover_letter_body|default:'' }}</textarea></div>
+        </details>
+        <div class="export-actions">
+          <button class="secondary" type="submit" formaction="{% url 'document_preview' %}">Preview source</button>
+          <button class="primary" type="submit">Queue export</button>
+        </div>
+      </form>
+    </section>
+
+    <aside class="card">
+      <h2>Export checks</h2>
+      <p>The worker reads the finished file back before release. It blocks empty text layers, missing confirmed contact details, and unexpected reading order.</p>
+      <ul class="check-list">
+        <li>Single-column source order</li>
+        <li>PDF text extraction and page count</li>
+        <li>DOCX text extraction and LibreOffice pagination proof</li>
+        <li>Email and phone preservation</li>
+        <li>Artifact SHA-256 recorded</li>
+      </ul>
+    </aside>
+  </div>
+
+  {% if preview %}
+    <section class="preview-section" aria-labelledby="preview-heading">
+      <div class="section-heading">
+        <div><h2 id="preview-heading">Pre-download preview</h2><p class="hint">{{ preview.template.label }} · {{ preview.output_format|upper }} · no job created yet</p></div>
+      </div>
+      <article class="paper-preview preview-{{ preview.template_key }}">
+        <header class="preview-head {% if preview.template.name_align == 'center' %}centered{% endif %}">
+          <h3>{{ preview.snapshot.profile.full_name }}</h3>
+          <p>
+            {% if preview.snapshot.profile.email %}{{ preview.snapshot.profile.email }}{% endif %}
+            {% if preview.snapshot.profile.phone %} · {{ preview.snapshot.profile.phone }}{% endif %}
+            {% if preview.snapshot.profile.location %} · {{ preview.snapshot.profile.location }}{% endif %}
+          </p>
+        </header>
+        {% if preview.document_type == "cover_letter" %}
+          {% if preview.snapshot.extra.role or preview.snapshot.extra.company %}
+            <h4>{{ preview.snapshot.extra.role }}{% if preview.snapshot.extra.role and preview.snapshot.extra.company %} — {% endif %}{{ preview.snapshot.extra.company }}</h4>
+          {% endif %}
+          <div class="preview-body preserve">{{ preview.snapshot.extra.body }}</div>
+        {% else %}
+          {% if preview.snapshot.profile.summary %}<section><h4>Summary</h4><p class="preserve">{{ preview.snapshot.profile.summary }}</p></section>{% endif %}
+          {% if preview.snapshot.profile.skills %}<section><h4>Skills</h4><p>{{ preview.snapshot.profile.skills|join:", " }}</p></section>{% endif %}
+          {% if preview.snapshot.profile.experience %}
+            <section><h4>Experience</h4>
+            {% for row in preview.snapshot.profile.experience %}
+              <div class="preview-entry"><strong>{{ row.title }}{% if row.title and row.employer %} · {% endif %}{{ row.employer }}</strong>{% if row.dates %}<span>{{ row.dates }}</span>{% endif %}<p class="preserve">{{ row.details }}</p></div>
+            {% endfor %}
+            </section>
+          {% endif %}
+          {% if preview.snapshot.profile.education %}
+            <section><h4>Education</h4>
+            {% for row in preview.snapshot.profile.education %}
+              <div class="preview-entry"><strong>{{ row.school }}{% if row.school and row.degree %} · {% endif %}{{ row.degree }}</strong>{% if row.dates %}<span>{{ row.dates }}</span>{% endif %}<p class="preserve">{{ row.details }}</p></div>
+            {% endfor %}
+            </section>
+          {% endif %}
+        {% endif %}
+      </article>
+    </section>
+  {% endif %}
+
+  <section class="card" aria-labelledby="release-review-heading">
+    <div class="section-heading">
+      <div>
+        <h2 id="release-review-heading">Review & unlock final downloads</h2>
+        <p class="hint">Draft previews stay available. Final PDF/DOCX downloads unlock only after the exact generated artifacts pass the factual and ATS review.</p>
+      </div>
+    </div>
+    {% if release_report %}
+      {% if release_report.allowed %}
+        <p class="notice">Review passed.</p>
+      {% else %}
+        <div class="notice error" role="alert">
+          <strong>Review blocked final download.</strong>
+          {% for error in release_report.errors %}<div>{{ error }}</div>{% endfor %}
+        </div>
+      {% endif %}
+      {% include "webapp/review_coverage.html" with report=release_report only %}
+    {% endif %}
+    {% if successful_cvs %}
+      <form action="{% url 'document_release_review' %}" method="post">
+        {% csrf_token %}
+        <div class="fields">
+          <div class="field">
+            <label for="cv_job_id">Generated CV</label>
+            <select id="cv_job_id" name="cv_job_id" required>
+              {% for job in successful_cvs %}
+                <option value="{{ job.pk }}" {% if release_form_data.cv_job_id == job.pk|stringformat:"s" %}selected{% endif %}>#{{ job.pk }} · {{ job.template_key|title }} · {{ job.output_format|upper }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="field">
+            <label for="cover_job_id">Generated cover letter (optional)</label>
+            <select id="cover_job_id" name="cover_job_id">
+              <option value="">No cover letter</option>
+              {% for job in successful_covers %}
+                <option value="{{ job.pk }}" {% if release_form_data.cover_job_id == job.pk|stringformat:"s" %}selected{% endif %}>#{{ job.pk }} · {{ job.template_key|title }} · {{ job.output_format|upper }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="release_employer">Target employer</label>
+          <input id="release_employer" name="employer" maxlength="200" value="{{ release_form_data.employer|default:'' }}">
+        </div>
+        <div class="field">
+          <label for="release_headings">CV section headings in visible order</label>
+          <textarea id="release_headings" name="visual_headings" rows="4">{{ release_form_data.visual_headings|default:default_headings }}</textarea>
+        </div>
+        <div class="field">
+          <label for="release_keywords">Posting keywords (JSON)</label>
+          <textarea id="release_keywords" name="keywords" rows="4">{{ release_form_data.keywords|default:'{"keywords":[{"term":"Python","priority":"required"}]}' }}</textarea>
+        </div>
+        <details>
+          <summary>Optional factual evidence</summary>
+          <div class="field"><label for="release_claims">Candidate claims (JSON)</label><textarea id="release_claims" name="claims" rows="3">{{ release_form_data.claims|default:"[]" }}</textarea></div>
+          <div class="field"><label for="release_citations">Company citations (JSON)</label><textarea id="release_citations" name="company_citations" rows="3">{{ release_form_data.company_citations|default:"[]" }}</textarea></div>
+        </details>
+        <label><input type="checkbox" name="confirm_visual" {% if release_form_data.confirm_visual == "on" %}checked{% endif %} required> I visually reviewed these generated files and their reading order.</label>
+        <p><button class="primary" type="submit">Run final review & unlock exact files</button></p>
+      </form>
+    {% else %}
+      <p class="hint">Compile a CV first. Source previews remain available while no final artifact is approved.</p>
+    {% endif %}
+  </section>
+
+  <section class="jobs-section">
+    <div class="section-heading"><h2>Recent drafts</h2><span class="hint">Newest first</span></div>
+    <p>When your CV and cover letter are ready, <a href="{% url 'application_review' %}">review the final PDFs</a> for ATS coverage and factual accuracy.</p>
+    {% for job in jobs %}
+      <article class="card job-row">
+        <div>
+          <p class="kicker">#{{ job.pk }} · {{ job.get_document_type_display }} · {{ job.output_format|upper }}</p>
+          <h3>{{ job.template_key|title }} template</h3>
+          <p class="hint">Profile revision {{ job.profile_revision }} · attempt {{ job.attempt }}</p>
+          {% if job.verification.pages %}<p class="hint">{{ job.verification.pages }} page{{ job.verification.pages|pluralize }} · {{ job.verification.pagination_source }}</p>{% endif %}
+          {% if job.error %}<p class="job-error">{{ job.error }}</p>{% endif %}
+          {% if job.verification.warnings %}
+            {% for warning in job.verification.warnings %}<p class="hint">{{ warning }}</p>{% endfor %}
+          {% endif %}
+        </div>
+        <div class="job-actions">
+          <span class="status status-{{ job.status }}">{{ job.get_status_display }}</span>
+          {% if job.status == "succeeded" %}
+            <a class="secondary" href="{% url 'document_download' job.pk %}?preview=1" target="_blank" rel="noopener">Preview draft pages</a>
+            {% if job.release_approved %}
+              <a class="primary" href="{% url 'document_download' job.pk %}">Download approved {{ job.output_format|upper }}</a>
+            {% else %}
+              <span class="hint">Final download locked · run application review</span>
+            {% endif %}
+          {% elif job.status == "failed" %}
+            <form action="{% url 'document_retry' job.pk %}" method="post">{% csrf_token %}<button class="secondary" type="submit">Retry</button></form>
+          {% endif %}
+        </div>
+      </article>
+    {% empty %}
+      <div class="card"><p class="hint">No exports yet.</p></div>
+    {% endfor %}
+  </section>
+  {% if has_active_jobs %}<script>window.setTimeout(function () { window.location.reload(); }, 4000);</script>{% endif %}
+{% endif %}
+{% endblock %}

@@ -88,6 +88,17 @@ SECURE_REFERRER_POLICY = "same-origin"
 DATA_UPLOAD_MAX_NUMBER_FILES = 2
 FILE_UPLOAD_MAX_MEMORY_SIZE = 512 * 1024
 
+# Document exports are deliberately separate from tracked workspace files.
+DOCUMENT_EXPORT_ROOT = DATA_DIR / "exports"
+DOCUMENT_EXPORT_ROOT.mkdir(mode=0o700, parents=True, exist_ok=True)
+DOCUMENT_WORKER_RUNTIME = os.environ.get("JOBWEB_DOCUMENT_WORKER_RUNTIME", "docker")
+DOCUMENT_WORKER_IMAGE = os.environ.get(
+    "JOBWEB_DOCUMENT_WORKER_IMAGE", "genpact-job-ai-document-worker:local"
+)
+DOCUMENT_WORKER_TIMEOUT = int(os.environ.get("JOBWEB_DOCUMENT_WORKER_TIMEOUT", "90"))
+DOCUMENT_WORKER_MEMORY = os.environ.get("JOBWEB_DOCUMENT_WORKER_MEMORY", "768m")
+DOCUMENT_WORKER_CPUS = os.environ.get("JOBWEB_DOCUMENT_WORKER_CPUS", "1.0")
+
 # Model telemetry contains only configured route labels, usage counts and estimated cost.
 LOGGING = {
     "version": 1, "disable_existing_loggers": False,

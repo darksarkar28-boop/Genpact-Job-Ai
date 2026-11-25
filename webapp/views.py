@@ -1,21 +1,29 @@
+import hashlib
+import io
+
 from django.conf import settings
-from django.http import JsonResponse
 from django.contrib import messages
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import UserCreationForm
 from django.db import IntegrityError, transaction
 from django.db.models import F
-from django.shortcuts import redirect, render
+from django.http import FileResponse, Http404, HttpResponseForbidden, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.views.decorators.cache import never_cache
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from .documents import (
+    DocumentProblem, TEMPLATES, artifact_file, draft_preview, prepare_document_request,
+    queue_document_job, read_review_pdf, release_approval_matches, retry_document_job, review_digest, review_pdf_file,
+)
 from .forms import EducationSet, ExperienceSet, ImportForm, ProfileForm
 from .importers import ImportProblem, read_upload
-from .models import Profile
+from .models import DocumentJob, Profile, TemplateReview
 from .profile_data import MAX_ENTRIES, SCALARS, merge_profiles, skill_list
 
 
@@ -122,6 +130,265 @@ def edit_profile(request):
     profile = _owned_profile(request)
     return _editor(request, profile, profile.data, submitted=request.POST if request.method == "POST" else None)
 
+
+def _document_page(
+    request, *, status=200, form_data=None, export_error="", preview=None,
+    release_report=None, release_form_data=None,
+):
+    profile = _owned_profile(request)
+    jobs = list(DocumentJob.objects.filter(user=request.user).order_by("-created_at")[:25])
+    for job in jobs:
+        job.release_approved = release_approval_matches(job, request.user.pk, profile.revision)
+    successful_cvs = [
+        job for job in jobs
+        if job.status == DocumentJob.Status.SUCCEEDED
+        and job.document_type == DocumentJob.DocumentType.CV
+        and artifact_file(job) and review_pdf_file(job)
+    ]
+    successful_covers = [
+        job for job in jobs
+        if job.status == DocumentJob.Status.SUCCEEDED
+        and job.document_type == DocumentJob.DocumentType.COVER_LETTER
+        and artifact_file(job) and review_pdf_file(job)
+    ]
+    approved = {
+        review.template_key: review
+        for review in TemplateReview.objects.filter(approved=True).exclude(feedback="")
+    }
+    templates = []
+    for item in TEMPLATES:
+        enriched = dict(item)
+        enriched["review"] = approved.get(item["key"])
+        templates.append(enriched)
+    return render(request, "webapp/documents.html", {
+        "profile": profile,
+        "jobs": jobs,
+        "templates": templates,
+        "form_data": form_data or {},
+        "export_error": export_error,
+        "preview": preview,
+        "release_report": release_report,
+        "release_form_data": release_form_data or {},
+        "default_headings": "Summary\nSkills\nExperience\nEducation",
+        "successful_cvs": successful_cvs,
+        "successful_covers": successful_covers,
+        "has_active_jobs": any(job.status in (DocumentJob.Status.QUEUED, DocumentJob.Status.RUNNING) for job in jobs),
+    }, status=status)
+
+
+@login_required
+@never_cache
+@require_GET
+def document_center(request):
+    return _document_page(request)
+
+
+@login_required
+@never_cache
+@require_POST
+def preview_document(request):
+    profile = _owned_profile(request)
+    try:
+        prepared = prepare_document_request(profile, request.POST)
+    except DocumentProblem as exc:
+        return _document_page(request, status=422, form_data=request.POST, export_error=str(exc))
+    return _document_page(request, form_data=request.POST, preview=prepared)
+
+
+@login_required
+@never_cache
+@require_POST
+def queue_document(request):
+    profile = _owned_profile(request)
+    try:
+        job, created = queue_document_job(request.user, profile, request.POST)
+    except DocumentProblem as exc:
+        return _document_page(request, status=422, form_data=request.POST, export_error=str(exc))
+    if created:
+        messages.success(request, f"Export #{job.pk} was queued.")
+    else:
+        messages.success(request, f"That export already exists as job #{job.pk}; no duplicate was created.")
+    return redirect("documents")
+
+
+@login_required
+@never_cache
+@require_POST
+def retry_document(request, job_id):
+    job = get_object_or_404(DocumentJob, pk=job_id, user=request.user)
+    try:
+        retry_document_job(job)
+    except DocumentProblem as exc:
+        return _document_page(request, status=409, export_error=str(exc))
+    messages.success(request, f"Export #{job.pk} was queued again.")
+    return redirect("documents")
+
+
+@login_required
+@never_cache
+@require_GET
+def document_status(request, job_id):
+    job = get_object_or_404(DocumentJob, pk=job_id, user=request.user)
+    payload = {
+        "id": job.pk,
+        "status": job.status,
+        "attempt": job.attempt,
+        "error": job.error,
+        "verification": job.verification,
+    }
+    if job.status == DocumentJob.Status.SUCCEEDED and artifact_file(job):
+        profile = _owned_profile(request)
+        approved = release_approval_matches(job, request.user.pk, profile.revision)
+        payload["release_approved"] = approved
+        payload["review_required"] = not approved
+        if approved:
+            payload["download_url"] = reverse("document_download", args=[job.pk])
+        if review_pdf_file(job):
+            payload["preview_url"] = reverse("document_download", args=[job.pk]) + "?preview=1"
+    return JsonResponse(payload)
+
+
+@login_required
+@never_cache
+@require_GET
+def document_download(request, job_id):
+    job = get_object_or_404(DocumentJob, pk=job_id, user=request.user)
+    path = artifact_file(job)
+    if job.status != DocumentJob.Status.SUCCEEDED or path is None:
+        raise Http404("Document artifact is unavailable.")
+    if request.GET.get("preview") == "1":
+        proof = review_pdf_file(job)
+        if proof is None:
+            raise Http404("Document preview is unavailable.")
+        return FileResponse(draft_preview(proof), filename=f"draft-{path.stem}.pdf", content_type="application/pdf")
+
+    profile = _owned_profile(request)
+    if not release_approval_matches(job, request.user.pk, profile.revision):
+        return HttpResponseForbidden(
+            "Final download is locked until these exact generated files pass the application review."
+        )
+    data = path.read_bytes()
+    if hashlib.sha256(data).hexdigest() != job.artifact_sha256:
+        return HttpResponseForbidden("Final download is locked because the approved artifact changed.")
+    content_type = {
+        DocumentJob.OutputFormat.PDF: "application/pdf",
+        DocumentJob.OutputFormat.DOCX: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    }[job.output_format]
+    return FileResponse(io.BytesIO(data), as_attachment=True, filename=path.name, content_type=content_type)
+
+
+@login_required
+@never_cache
+@require_POST
+def approve_document_release(request):
+    """Approve exact generated artifacts for final download using Issue #6's audit."""
+    import json
+
+    from .application_gate import GateError, audit, parse_json_list
+
+    profile = _owned_profile(request)
+    try:
+        cv_job = get_object_or_404(
+            DocumentJob,
+            pk=int(request.POST.get("cv_job_id") or 0),
+            user=request.user,
+            document_type=DocumentJob.DocumentType.CV,
+        )
+        cover_id = int(request.POST.get("cover_job_id") or 0)
+        cover_job = None
+        if cover_id:
+            cover_job = get_object_or_404(
+                DocumentJob,
+                pk=cover_id,
+                user=request.user,
+                document_type=DocumentJob.DocumentType.COVER_LETTER,
+            )
+        jobs = [cv_job] + ([cover_job] if cover_job else [])
+        for job in jobs:
+            if (
+                job.status != DocumentJob.Status.SUCCEEDED
+                or job.profile_revision != profile.revision
+                or not artifact_file(job)
+            ):
+                raise DocumentProblem(
+                    "Choose completed generated files from the current saved profile revision."
+                )
+        if request.POST.get("confirm_visual") != "on":
+            raise DocumentProblem("Confirm that you visually reviewed the generated documents.")
+        terms_obj = json.loads(request.POST.get("keywords") or "{}")
+        if not isinstance(terms_obj, dict) or not isinstance(terms_obj.get("keywords"), list):
+            raise GateError("Posting keywords must be a JSON object with a keywords list")
+        keywords = terms_obj["keywords"]
+        claims = parse_json_list(request.POST.get("claims") or "[]", "Candidate claims", maximum=60)
+        citations = parse_json_list(
+            request.POST.get("company_citations") or "[]", "Company citations", maximum=8
+        )
+        headings = [
+            line.strip()
+            for line in (request.POST.get("visual_headings") or "").splitlines()
+            if line.strip()
+        ]
+        cv_bytes = read_review_pdf(cv_job)
+        cover_bytes = read_review_pdf(cover_job) if cover_job else b""
+    except (DocumentProblem, GateError, ValueError, TypeError) as exc:
+        return _document_page(
+            request,
+            status=422,
+            export_error=str(exc),
+            release_form_data=request.POST,
+        )
+
+    report = audit(
+        profile.data,
+        cv_bytes,
+        cover_pdf=cover_bytes,
+        keywords=keywords,
+        claims=claims,
+        company_citations=citations,
+        employer=(request.POST.get("employer") or "").strip(),
+        visual_headings=headings,
+    )
+    if not report["allowed"]:
+        return _document_page(
+            request,
+            status=422,
+            export_error="Final download remains locked. Correct the review findings and try again.",
+            release_report=report,
+            release_form_data=request.POST,
+        )
+
+    profile.refresh_from_db()
+    if any(job.profile_revision != profile.revision for job in jobs):
+        return _document_page(
+            request,
+            status=409,
+            export_error="Your profile changed during review. Review the generated files again.",
+            release_report=report,
+            release_form_data=request.POST,
+        )
+
+    approved_at = timezone.now().isoformat()
+    application_jobs = [job.pk for job in jobs]
+    with transaction.atomic():
+        for job in jobs:
+            verification = dict(job.verification or {})
+            verification["release_approval"] = {
+                "user_id": request.user.pk,
+                "profile_revision": profile.revision,
+                "artifact_sha256": job.artifact_sha256,
+                "review_pdf_sha256": review_digest(job),
+                "verified_sources": report["verified_sources"],
+                "approved_at": approved_at,
+                "application_jobs": application_jobs,
+            }
+            job.verification = verification
+            job.save(update_fields=["verification", "updated_at"])
+
+    messages.success(
+        request,
+        "Application review passed. Final downloads are unlocked for the exact approved files.",
+    )
+    return _document_page(request, release_report=report, release_form_data=request.POST)
 
 
 @login_required
