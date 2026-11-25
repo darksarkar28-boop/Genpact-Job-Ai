@@ -189,10 +189,17 @@ def candidate_findings(document, profile, claim_list, externally_verified="", em
             headings.add(title)
             headings.add(normalized(f"{title} {dates}"))
     titles = {title for title, _ in positions}
-    confirmed_degrees = {normalized(degree) for degree in _profile_fields(profile, "degree")}
+    degrees = _profile_fields(profile, "degree")
+    confirmed_qualifications = {normalized(degree) for degree in degrees}
+    for row in profile.get("education", []):
+        if isinstance(row, dict) and row.get("degree") and row.get("dates"):
+            degree, dates = row["degree"], row["dates"]
+            confirmed_qualifications.update((
+                normalized(f"{degree} {dates}"), normalized(f"{degree} ({dates})"),
+            ))
     known_degree_labels = {
         normalized(match.group(0))
-        for degree in _profile_fields(profile, "degree")
+        for degree in degrees
         for match in DEGREE.finditer(degree)
     }
     findings = []
@@ -219,6 +226,8 @@ def candidate_findings(document, profile, claim_list, externally_verified="", em
             # BSc Physics` when the candidate confirmed only the former.
             end = degree_tokens[index + 1].start() if index + 1 < len(degree_tokens) else len(line)
             qualification = line[degree_token.start():end]
+            if normalized(qualification.rstrip(" .,;|•/")) in confirmed_qualifications:
+                continue
             # School, dates and punctuation are presentation metadata, not
             # part of the qualification. Another degree token always creates
             # another claim, even when it has the same credential prefix.
@@ -226,10 +235,9 @@ def candidate_findings(document, profile, claim_list, externally_verified="", em
                 r"\s*(?:[,;|•]|\s+[—–]\s+)\s*|\s+(?:at|from)\s+",
                 qualification, maxsplit=1, flags=re.I,
             )[0]
-            qualification = re.sub(r"\s*\(\s*(?:19|20)\d{2}[^)]*\)\s*$", "", qualification)
-            qualification = re.sub(r"\s+(?:19|20)\d{2}\s*[-–]\s*(?:19|20)\d{2}\s*$", "", qualification)
-            qualification = re.sub(r"\s+(?:and|&)\s*$", "", qualification, flags=re.I).strip(" -–—()[]{},;|•/")
-            if normalized(qualification) not in confirmed_degrees:
+            qualification = re.sub(r"\s+(?:and|&)\s*$", "", qualification, flags=re.I).strip(" -–—,;|•/")
+            if (normalized(qualification) not in confirmed_qualifications
+                    and normalized(qualification.rstrip(".)]}")) not in confirmed_qualifications):
                 kind = ("Unsupported degree credential" if normalized(degree_token.group(0))
                         not in known_degree_labels else "Unsupported degree/course")
                 findings.append(f"{kind}: {qualification[:120]}")

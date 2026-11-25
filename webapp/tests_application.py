@@ -264,6 +264,26 @@ class BackendReviewTests(TestCase):
         self.assertContains(result, "Unsupported degree credential: PhD", status_code=422)
         self.assertFalse(result.context["token"])
 
+    def test_displayed_qualification_dates_belong_to_the_same_degree(self):
+        saved = Profile.objects.get(user=self.user)
+        saved.data["education"].append({
+            "degree": "MSc Statistics", "school": "Second University", "dates": "Sep 2024 - Present",
+        })
+        saved.save(update_fields=["data"])
+        for qualification, allowed in (
+            ("MSc Statistics Sep 2024 - Present", True),
+            ("MSc Statistics (Sep 2024 - Present)", True),
+            ("BSc Computer Science 2015 - 2019", True),
+            ("MSc Statistics 2015 - 2019", False),
+            ("MSc Economics Sep 2024 - Present", False),
+        ):
+            with self.subTest(qualification=qualification):
+                lines = [qualification if line == "BSc Computer Science" else line for line in CV_LINES]
+                response = self.client.post(reverse("application_review"), self.post_data(lines=lines))
+                self.assertEqual(response.status_code, 200 if allowed else 422)
+                if not allowed:
+                    self.assertContains(response, qualification, status_code=422)
+
     def test_unconfirmed_second_bsc_blocks_review_and_release(self):
         # Regression from the hosted failure on febefe2: the degree prefix
         # BSc is genuine, but Physics is not in this candidate's profile.
