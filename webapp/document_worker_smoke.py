@@ -132,6 +132,12 @@ class DocumentWorkerSmokeTests(TestCase):
             self.assertEqual(cover_pdf.verification["pagination_source"], "generated PDF")
             self.assertTrue(cover_docx.verification["pagination_source"].startswith("headless LibreOffice"))
 
+            for key in sorted(expected_templates):
+                for cv_job in (cv_pdfs[key], cv_docxs[key]):
+                    with self.subTest(final_cv=key, output_format=cv_job.output_format):
+                        self._approve_generated(owner, profile, cv_job)
+                        self._assert_exact_final_download(cv_job)
+
             with zipfile.ZipFile(artifact_file(cv_docxs["modern"])) as doc:
                 modern_xml = doc.read("word/document.xml")
             with zipfile.ZipFile(artifact_file(cv_docxs["compact"])) as doc:

@@ -50,6 +50,7 @@ class Command(BaseCommand):
             verification = dict(job.verification or {})
             verification.pop("release_approval", None)
             verification.pop("review_pdf_name", None)
+            verification.pop("review_pdf_sha256", None)
             verification["artifact_cleaned_at"] = timezone.now().isoformat()
             job.artifact_name = ""
             job.artifact_sha256 = ""

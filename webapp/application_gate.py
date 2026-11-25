@@ -120,11 +120,18 @@ def _standalone_title_like(text):
     ) and not any(ch.isdigit() for ch in text))
 
 
-def _position_finding(line, in_experience, titles, positions):
+def _position_finding(line, in_experience, titles, positions, stock_headings, next_line):
     label = ROLE.match(line)
     if not label and not in_experience:
         return None
     claim = (label.group(1) if label else line).strip()
+    # The stock moderncv text layer puts the employer on its own line,
+    # followed by the title and optional dates from the same experience row.
+    employer = normalized(claim)
+    if in_experience and not label and employer in stock_headings:
+        if normalized(next_line) in stock_headings[employer]:
+            return None
+        return f"Unsupported job title and employer: {next_line[:100]} at {claim[:100]}"
     parts = re.split(r"\s+at\s+", claim, maxsplit=1, flags=re.I)
     if len(parts) == 1:
         if label and normalized(claim) not in titles:
@@ -148,18 +155,36 @@ def _position_finding(line, in_experience, titles, positions):
     return None
 
 
-def candidate_findings(document, profile, claim_list, externally_verified=""):
+def _company_fact(line, employer):
+    return COMPANY_FACT.search(line) and (
+        (employer and has_term(normalized(line), employer)) or NAMED_COMPANY_FACT.search(line)
+    )
+
+
+def _statement_is_verified(line, quotes):
+    statement = line.strip().rstrip(".!?")
+    return any(has_term(quote, statement) for quote in quotes)
+
+
+def candidate_findings(document, profile, claim_list, externally_verified="", employer=""):
     """Require high-risk tokens and declared claims to be in confirmed profile evidence.
 
     A source quote only grounds its exact text, not an inference or exaggeration.
     """
     evidence = normalized(profile_text(profile))
-    external = normalized(externally_verified)
-    positions = {
-        (normalized(row["title"]), normalized(str(row.get("employer") or "")))
-        for row in profile.get("experience", [])
-        if isinstance(row, dict) and isinstance(row.get("title"), str) and row["title"].strip()
-    }
+    public_quotes = [normalized(quote) for quote in externally_verified.splitlines()]
+    positions = set()
+    stock_headings = {}
+    for row in profile.get("experience", []):
+        if not isinstance(row, dict) or not isinstance(row.get("title"), str) or not row["title"].strip():
+            continue
+        title = normalized(row["title"])
+        workplace = normalized(str(row.get("employer") or ""))
+        positions.add((title, workplace))
+        if workplace:
+            headings = stock_headings.setdefault(workplace, set())
+            headings.add(title)
+            headings.add(normalized(f"{title} {row.get('dates') or ''}"))
     titles = {title for title, _ in positions}
     confirmed_degrees = {normalized(degree) for degree in _profile_fields(profile, "degree")}
     known_degree_labels = {
@@ -168,11 +193,15 @@ def candidate_findings(document, profile, claim_list, externally_verified=""):
         for match in DEGREE.finditer(degree)
     }
     findings = []
-    for token in sorted(set(m.group().strip() for m in [*YEAR.finditer(document), *NUMBER.finditer(document)])):
-        if not has_term(evidence, token) and not has_term(external, token):
-            findings.append(f"Unsupported metric or date: {token}")
     in_experience = False
-    for line in document.splitlines():
+    lines = [text.strip() for text in document.splitlines() if text.strip()]
+    for line_number, line in enumerate(lines):
+        next_line = lines[line_number + 1] if line_number + 1 < len(lines) else ""
+        if not (public_quotes and _company_fact(line, employer) and _statement_is_verified(line, public_quotes)):
+            for match in (*YEAR.finditer(line), *NUMBER.finditer(line)):
+                token = match.group().strip()
+                if not has_term(evidence, token):
+                    findings.append(f"Unsupported metric or date: {token}")
         heading = normalized(line).rstrip(":")
         if heading in EXPERIENCE_HEADINGS:
             in_experience = True
@@ -201,7 +230,7 @@ def candidate_findings(document, profile, claim_list, externally_verified=""):
                 kind = ("Unsupported degree credential" if normalized(degree_token.group(0))
                         not in known_degree_labels else "Unsupported degree/course")
                 findings.append(f"{kind}: {qualification[:120]}")
-        position_error = _position_finding(line, in_experience, titles, positions)
+        position_error = _position_finding(line, in_experience, titles, positions, stock_headings, next_line)
         if position_error:
             findings.append(position_error)
         for match in EMPLOYER.finditer(line):
@@ -288,11 +317,7 @@ def fetch_public_source(url):
 
 def company_findings(document, employer, citations, *, source_fetcher=fetch_public_source):
     findings, verified = [], []
-    facts = [line.strip() for line in document.splitlines()
-             if COMPANY_FACT.search(line) and (
-                 (employer and has_term(normalized(line), employer))
-                 or NAMED_COMPANY_FACT.search(line)
-             )]
+    facts = [line.strip() for line in document.splitlines() if _company_fact(line, employer)]
     for i, source in enumerate(citations):
         if not isinstance(source, dict) or not all(isinstance(source.get(k), str) and source[k].strip() for k in ("claim", "url")):
             findings.append(f"Company citation #{i + 1} needs a claim and HTTPS URL")
@@ -309,8 +334,9 @@ def company_findings(document, employer, citations, *, source_fetcher=fetch_publ
                 verified.append(claim)
         except GateError as exc:
             findings.append(f"Company citation verification failed: {exc}")
+    public_quotes = [normalized(claim) for claim in verified]
     for fact in facts:
-        if not any(has_term(normalized(fact), claim) or has_term(normalized(claim), fact) for claim in verified):
+        if not _statement_is_verified(fact, public_quotes):
             findings.append("Unsourced employer-specific statement: " + fact[:120])
     return list(dict.fromkeys(findings)), "\n".join(verified)
 
@@ -375,7 +401,7 @@ def audit(profile, cv_pdf, *, cover_pdf=b"", keywords, claims=(), company_citati
     company_errors, independently_verified = company_findings(content, employer, company_citations, source_fetcher=source_fetcher)
     errors.extend(company_errors)
     candidate_text = cv + "\n" + _cover_without_dateline(cover)
-    errors.extend(candidate_findings(candidate_text, profile, claims, independently_verified))
+    errors.extend(candidate_findings(candidate_text, profile, claims, independently_verified, employer))
     if cover and not employer:
         errors.append("State the target employer to check cover letter company claims")
     verified_sources = [

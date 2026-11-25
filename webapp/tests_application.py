@@ -205,6 +205,27 @@ class BackendReviewTests(TestCase):
                     self.assertContains(result, heading, status_code=422)
                     self.assertFalse(result.context["token"])
 
+    def test_stock_employer_heading_requires_its_own_title_and_dates(self):
+        saved = Profile.objects.get(user=self.user)
+        saved.data["experience"].append({
+            "title": "Lead Analyst", "employer": "Second Labs", "dates": "2021 - Present",
+        })
+        saved.save(update_fields=["data"])
+        for employer, role_line, allowed in (
+            ("Example Labs", "Data Engineer 2019 - 2024", True),
+            ("Second Labs", "Lead Analyst", True),
+            ("Example Labs", "Lead Analyst 2021 - Present", False),
+            ("Example Labs", "Data Engineer 2021 - Present", False),
+            ("Second Labs", "Director 2021 - Present", False),
+        ):
+            with self.subTest(employer=employer, role_line=role_line):
+                lines = [*CV_LINES[:3], employer, role_line, *CV_LINES[5:]]
+                response = self.client.post(reverse("application_review"), self.post_data(lines=lines))
+                self.assertEqual(response.status_code, 200 if allowed else 422)
+                if not allowed:
+                    self.assertContains(response, role_line + " at " + employer, status_code=422)
+                    self.assertFalse(response.context["token"])
+
     def test_standalone_title_headings_do_not_allow_unconfirmed_promotions(self):
         for title, permitted in [
             ("Data Engineer", True),
@@ -367,6 +388,22 @@ class PureAuditTests(TestCase):
     def test_fabricated_role_and_claim_are_rejected(self):
         findings = candidate_findings("Position: Lead Astronaut\nSkills Python", PROFILE, [])
         self.assertTrue(any("Unsupported job title" in item for item in findings))
+
+    def test_public_employer_metric_does_not_verify_a_separate_candidate_claim(self):
+        fact = "Example Labs launched 99 projects."
+        url = "https://news.example.test/launch"
+        options = dict(keywords=TERMS["keywords"], visual_headings=["Experience", "Education"],
+                       employer="Example Labs", company_citations=[{"url": url, "claim": fact}],
+                       source_fetcher=lambda _: fact)
+        greeting = "Dear Hiring Team, I am interested in this opportunity."
+        supported = audit(PROFILE, pdf(CV_LINES), cover_pdf=pdf([greeting, fact]), **options)
+        self.assertTrue(supported["allowed"], supported["errors"])
+        rejected = audit(PROFILE, pdf(CV_LINES), cover_pdf=pdf([greeting, fact, "I completed 99 projects."]), **options)
+        self.assertFalse(rejected["allowed"])
+        self.assertIn("Unsupported metric or date: 99 projects", rejected["errors"])
+        partial, _ = company_findings(fact, "Example Labs", [{"url": url, "claim": "Example Labs"}],
+                                      source_fetcher=lambda _: "Example Labs")
+        self.assertTrue(any(fact in finding for finding in partial))
 
     def test_reordered_headings_detected(self):
         self.assertIsNotNone(section_order("Education\nExperience", ["Experience", "Education"]))

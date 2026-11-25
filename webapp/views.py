@@ -19,7 +19,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from .documents import (
     DocumentProblem, TEMPLATES, artifact_file, draft_preview, prepare_document_request,
-    queue_document_job, release_approval_matches, retry_document_job, review_pdf_file,
+    queue_document_job, read_review_pdf, release_approval_matches, retry_document_job, review_digest, review_pdf_file,
 )
 from .forms import EducationSet, ExperienceSet, ImportForm, ProfileForm
 from .importers import ImportProblem, read_upload
@@ -309,7 +309,6 @@ def approve_document_release(request):
                 job.status != DocumentJob.Status.SUCCEEDED
                 or job.profile_revision != profile.revision
                 or not artifact_file(job)
-                or not review_pdf_file(job)
             ):
                 raise DocumentProblem(
                     "Choose completed generated files from the current saved profile revision."
@@ -329,8 +328,8 @@ def approve_document_release(request):
             for line in (request.POST.get("visual_headings") or "").splitlines()
             if line.strip()
         ]
-        cv_bytes = review_pdf_file(cv_job).read_bytes()
-        cover_bytes = review_pdf_file(cover_job).read_bytes() if cover_job else b""
+        cv_bytes = read_review_pdf(cv_job)
+        cover_bytes = read_review_pdf(cover_job) if cover_job else b""
     except (DocumentProblem, GateError, ValueError, TypeError) as exc:
         return _document_page(
             request,
@@ -377,6 +376,7 @@ def approve_document_release(request):
                 "user_id": request.user.pk,
                 "profile_revision": profile.revision,
                 "artifact_sha256": job.artifact_sha256,
+                "review_pdf_sha256": review_digest(job),
                 "verified_sources": report["verified_sources"],
                 "approved_at": approved_at,
                 "application_jobs": application_jobs,

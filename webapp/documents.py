@@ -99,11 +99,11 @@ def queue_document_job(user, profile: Profile, payload: dict):
 
     existing = DocumentJob.objects.filter(user=user, fingerprint=fingerprint).first()
     if existing:
-        if existing.status == DocumentJob.Status.SUCCEEDED and not artifact_file(existing):
-            existing.status = DocumentJob.Status.FAILED
-            existing.error = "The previous artifact is no longer available. Retry the export."
-            existing.finished_at = timezone.now()
-            existing.save(update_fields=["status", "error", "finished_at", "updated_at"])
+        if existing.status == DocumentJob.Status.SUCCEEDED and (
+            not artifact_file(existing) or not review_pdf_file(existing) or not review_digest(existing)
+        ):
+            mark_review_unavailable(existing)
+            existing.refresh_from_db()
         return existing, False
 
     try:
@@ -194,6 +194,33 @@ def review_pdf_file(job: DocumentJob):
     return candidate if candidate.is_file() else None
 
 
+def review_digest(job):
+    if job.output_format == DocumentJob.OutputFormat.PDF:
+        return job.artifact_sha256
+    return (job.verification or {}).get("review_pdf_sha256")
+
+
+def mark_review_unavailable(job):
+    message = "The compiled file or its review proof changed or is missing. Retry this export."
+    now = timezone.now()
+    DocumentJob.objects.filter(pk=job.pk, status=DocumentJob.Status.SUCCEEDED, attempt=job.attempt,
+                               artifact_sha256=job.artifact_sha256).update(
+        status=DocumentJob.Status.FAILED, error=message, finished_at=now, updated_at=now,
+    )
+    return message
+
+
+def read_review_pdf(job):
+    proof = review_pdf_file(job)
+    try:
+        data = proof.read_bytes() if proof else b""
+    except FileNotFoundError:
+        data = b""
+    if not data or hashlib.sha256(data).hexdigest() != review_digest(job):
+        raise DocumentProblem(mark_review_unavailable(job))
+    return data
+
+
 def release_approval_matches(job: DocumentJob, user_id: int, profile_revision: int) -> bool:
     approval = (job.verification or {}).get("release_approval") or {}
     return bool(
@@ -202,6 +229,7 @@ def release_approval_matches(job: DocumentJob, user_id: int, profile_revision: i
         and approval.get("user_id") == user_id
         and approval.get("profile_revision") == profile_revision
         and approval.get("artifact_sha256") == job.artifact_sha256
+        and review_digest(job) and approval.get("review_pdf_sha256") == review_digest(job)
     )
 
 
@@ -606,6 +634,7 @@ def process_claimed_job(job: DocumentJob):
                 proof_path = destination / f"{job.document_type}-{job.template_key}.review.pdf"
                 shutil.move(str(proof), proof_path)
                 verification["review_pdf_name"] = str(proof_path.relative_to(export_root))
+                verification["review_pdf_sha256"] = hashlib.sha256(proof_path.read_bytes()).hexdigest()
             verification.pop("release_approval", None)
             verification["sha256"] = digest
             job.status = DocumentJob.Status.SUCCEEDED

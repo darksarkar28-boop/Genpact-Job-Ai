@@ -228,10 +228,26 @@ class DocumentExportTests(TestCase):
         self.assertEqual(job.artifact_name, "")
         self.assertEqual(job.artifact_sha256, "")
         self.assertNotIn("review_pdf_name", job.verification)
+        self.assertNotIn("review_pdf_sha256", job.verification)
         self.assertNotIn("release_approval", job.verification)
         self.assertIn("artifact_cleaned_at", job.verification)
         self.assertEqual(DocumentJob.objects.filter(pk=job.pk).count(), 1)
         self.assertEqual(self.client.get(reverse("document_download", args=[job.pk])).status_code, 404)
+
+    def test_changed_word_proof_requires_a_new_compile_before_approval(self):
+        self.queue(output_format="docx")
+        job = self.finish_next()
+        review_pdf_file(job).write_bytes(pdf([*EXTRACTED, "Different proof"]))
+        response = self.client.post(reverse("document_release_review"), {
+            "cv_job_id": job.pk, "confirm_visual": "on", "keywords": '{"keywords":[]}',
+        })
+        self.assertContains(response, "Retry this export", status_code=422)
+        job.refresh_from_db()
+        self.assertEqual(job.status, DocumentJob.Status.FAILED)
+        self.assertNotIn("release_approval", job.verification)
+        self.assertEqual(self.client.get(reverse("document_download", args=[job.pk])).status_code, 404)
+        self.assertEqual(self.client.post(reverse("document_retry", args=[job.pk])).status_code, 302)
+        self.approve(self.finish_next())
 
     def test_failed_compile_is_cleaned_and_can_be_retried(self):
         self.queue()
