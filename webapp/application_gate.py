@@ -132,7 +132,8 @@ def _position_finding(line, in_experience, titles, positions, stock_headings, ne
         if normalized(next_line) in stock_headings[employer]:
             return None
         return f"Unsupported job title and employer: {next_line[:100]} at {claim[:100]}"
-    parts = re.split(r"\s+at\s+", claim, maxsplit=1, flags=re.I)
+    # Article and Word layouts put the title and employer on one line.
+    parts = re.split(r"\s+at\s+|\s*·\s*|\s+[-–—]\s+", claim, maxsplit=1, flags=re.I)
     if len(parts) == 1:
         if label and normalized(claim) not in titles:
             return "Unsupported job title: " + claim[:100]
@@ -145,7 +146,7 @@ def _position_finding(line, in_experience, titles, positions, stock_headings, ne
     # standalone role heading declares that the candidate held this position.
     if not label and title not in titles:
         words = parts[0].split()
-        if words[0].casefold() in {"i", "we", "my", "our"} or not all(
+        if not words or words[0].casefold() in {"i", "we", "my", "our"} or not all(
             word[0].isupper() or word.casefold() in {"of", "and", "the", "for", "in", "&"}
             for word in words
         ):
@@ -182,9 +183,11 @@ def candidate_findings(document, profile, claim_list, externally_verified="", em
         workplace = normalized(str(row.get("employer") or ""))
         positions.add((title, workplace))
         if workplace:
+            dates = str(row.get("dates") or "")
+            positions.add((title, normalized(f"{workplace} {dates}")))
             headings = stock_headings.setdefault(workplace, set())
             headings.add(title)
-            headings.add(normalized(f"{title} {row.get('dates') or ''}"))
+            headings.add(normalized(f"{title} {dates}"))
     titles = {title for title, _ in positions}
     confirmed_degrees = {normalized(degree) for degree in _profile_fields(profile, "degree")}
     known_degree_labels = {

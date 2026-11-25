@@ -424,7 +424,7 @@ def _article_latex(job: DocumentJob):
             if row.get("dates"):
                 text += rf"\hfill \textit{{{_tex(row['dates'])}}}"
             details = "\n\n".join(_tex(x) for x in _lines(row.get("details")))
-            rows.append(text + ("\n" + details if details else ""))
+            rows.append(text + ("\n\n" + details if details else ""))
         parts.append(_section("Experience", "\n\n".join(rows), template["section_rule"]))
     if profile.get("education"):
         rows = []
@@ -434,7 +434,7 @@ def _article_latex(job: DocumentJob):
             if row.get("dates"):
                 text += rf"\hfill \textit{{{_tex(row['dates'])}}}"
             details = "\n\n".join(_tex(x) for x in _lines(row.get("details")))
-            rows.append(text + ("\n" + details if details else ""))
+            rows.append(text + ("\n\n" + details if details else ""))
         parts.append(_section("Education", "\n\n".join(rows), template["section_rule"]))
     parts.append(r"\end{document}")
     return "\n".join(parts)

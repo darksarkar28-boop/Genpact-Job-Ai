@@ -241,6 +241,21 @@ class BackendReviewTests(TestCase):
                     self.assertContains(result, "Unsupported job title: " + title, status_code=422)
                     self.assertFalse(result.context["token"])
 
+    def test_inline_template_heading_checks_employer_title_and_dates_together(self):
+        for separator in (" · ", " - "):
+            for title, workplace, dates, allowed in (
+                ("Data Engineer", "Example Labs", "2019 - 2024", True),
+                ("Principal Engineer", "Example Labs", "2019 - 2024", False),
+                ("Data Engineer", "Other Labs", "2019 - 2024", False),
+                ("Data Engineer", "Example Labs", "2015 - 2019", False),
+            ):
+                heading = f"{title}{separator}{workplace} {dates}"
+                with self.subTest(heading=heading):
+                    findings = candidate_findings("Experience\n" + heading, PROFILE, [])
+                    self.assertEqual(not findings, allowed, findings)
+                    if not allowed:
+                        self.assertIn("Unsupported job title and employer: " + heading, findings)
+
     def test_extra_unconfirmed_degree_on_same_line_is_blocked(self):
         lines = [line.replace("BSc Computer Science", "BSc Computer Science, PhD Physics")
                  for line in CV_LINES]
