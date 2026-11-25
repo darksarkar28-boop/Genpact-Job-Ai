@@ -274,6 +274,11 @@ class BackendReviewTests(TestCase):
             ("MSc Statistics Sep 2024 - Present", True),
             ("MSc Statistics (Sep 2024 - Present)", True),
             ("BSc Computer Science 2015 - 2019", True),
+            ("MSc Statistics, Sep 2024 - Present", True),
+            ("MSc Statistics from Second University, Sep 2024 - Present", True),
+            ("MSc Statistics, 2015 - 2019", False),
+            ("MSc Statistics from Second University, 2015 - 2019", False),
+            ("MSc Statistics, Oct 2024 - Present", False),
             ("MSc Statistics 2015 - 2019", False),
             ("MSc Economics Sep 2024 - Present", False),
         ):
@@ -283,6 +288,7 @@ class BackendReviewTests(TestCase):
                 self.assertEqual(response.status_code, 200 if allowed else 422)
                 if not allowed:
                     self.assertContains(response, qualification, status_code=422)
+                    self.assertFalse(response.context["token"])
 
     def test_unconfirmed_second_bsc_blocks_review_and_release(self):
         # Regression from the hosted failure on febefe2: the degree prefix
