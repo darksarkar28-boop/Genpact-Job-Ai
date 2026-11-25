@@ -167,6 +167,11 @@ def _statement_is_verified(line, quotes):
     return any(has_term(quote, statement) for quote in quotes)
 
 
+def _education_heading(text):
+    """Compare a printed education heading across common layout separators."""
+    return normalized(re.sub(r"[(),;|•·]|\s+[-–—]\s+", " ", text)).strip(" .")
+
+
 def candidate_findings(document, profile, claim_list, externally_verified="", employer=""):
     """Require high-risk tokens and declared claims to be in confirmed profile evidence.
 
@@ -190,13 +195,14 @@ def candidate_findings(document, profile, claim_list, externally_verified="", em
             headings.add(normalized(f"{title} {dates}"))
     titles = {title for title, _ in positions}
     degrees = _profile_fields(profile, "degree")
-    confirmed_qualifications = {normalized(degree) for degree in degrees}
+    confirmed_qualifications = {_education_heading(degree) for degree in degrees}
     for row in profile.get("education", []):
         if isinstance(row, dict) and row.get("degree") and row.get("dates"):
             degree, dates = row["degree"], row["dates"]
-            confirmed_qualifications.update((
-                normalized(f"{degree} {dates}"), normalized(f"{degree} ({dates})"),
-            ))
+            labels = [degree]
+            if school := row.get("school"):
+                labels.extend((f"{degree} {school}", f"{degree} at {school}", f"{degree} from {school}"))
+            confirmed_qualifications.update(_education_heading(f"{label} {dates}") for label in labels)
     known_degree_labels = {
         normalized(match.group(0))
         for degree in degrees
@@ -225,19 +231,19 @@ def candidate_findings(document, profile, claim_list, externally_verified="", em
             # Looking only at BSc/PhD prefixes allows `BSc Computer Science,
             # BSc Physics` when the candidate confirmed only the former.
             end = degree_tokens[index + 1].start() if index + 1 < len(degree_tokens) else len(line)
-            qualification = line[degree_token.start():end]
-            if normalized(qualification.rstrip(" .,;|•/")) in confirmed_qualifications:
+            qualification = line[degree_token.start():end].strip(" .,;|•/")
+            qualification = re.sub(r"\s+(?:and|&)\s*$", "", qualification, flags=re.I)
+            if _education_heading(qualification) in confirmed_qualifications:
                 continue
-            # School, dates and punctuation are presentation metadata, not
-            # part of the qualification. Another degree token always creates
-            # another claim, even when it has the same credential prefix.
-            qualification = re.split(
-                r"\s*(?:[,;|•]|\s+[—–]\s+)\s*|\s+(?:at|from)\s+",
+            parts = re.split(
+                r"\s*(?:[,;|•·]|\s+[—–]\s+)\s*|\s+(?:at|from)\s+",
                 qualification, maxsplit=1, flags=re.I,
-            )[0]
-            qualification = re.sub(r"\s+(?:and|&)\s*$", "", qualification, flags=re.I).strip(" -–—,;|•/")
-            if (normalized(qualification) not in confirmed_qualifications
-                    and normalized(qualification.rstrip(".)]}")) not in confirmed_qualifications):
+            )
+            # A school label may follow a degree. Keep any dated suffix in
+            # the claim so dates from another education record cannot pass.
+            if len(parts) == 2 and not YEAR.search(parts[1]):
+                qualification = parts[0]
+            if _education_heading(qualification.rstrip(".)]}")) not in confirmed_qualifications:
                 kind = ("Unsupported degree credential" if normalized(degree_token.group(0))
                         not in known_degree_labels else "Unsupported degree/course")
                 findings.append(f"{kind}: {qualification[:120]}")
